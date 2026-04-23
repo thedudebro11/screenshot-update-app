@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d0d0d;
+      color: #d4d4d4;
+      min-height: 100vh;
+      padding: 14px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #222;
+    }
+    h1 { font-size: 1rem; font-weight: 600; color: #fff; line-height: 1.3; }
+    .subtitle { font-size: 0.72rem; color: #555; margin-top: 3px; }
+
+    /* ── Refresh button ─────────────────────────────────────────── */
+    #refresh-btn {
+      flex-shrink: 0;
+      background: #1d4ed8;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #refresh-btn:hover { background: #1e40af; }
+    #refresh-btn:active { opacity: 0.75; }
+
+    /* ── Status bar ─────────────────────────────────────────────── */
+    .status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 20px;
+      font-size: 0.76rem;
+      background: #171717;
+      border: 1px solid #1f1f1f;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+    }
+    .status-bar .label { color: #555; }
+    .status-bar .value { color: #d4d4d4; }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      border-radius: 99px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .badge-ok       { background: #14532d; color: #86efac; }
+    .badge-fallback { background: #451a03; color: #fcd34d; }
+    .badge-error    { background: #450a0a; color: #fca5a5; }
+    .badge-pending  { background: #1c1c1c; color: #71717a; }
+
+    /* ── Screenshot ─────────────────────────────────────────────── */
+    .screenshot-wrap {
+      background: #111;
+      border: 1px solid #1f1f1f;
+      border-radius: 8px;
+      overflow: hidden;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #screenshot-img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+    #no-image-msg {
+      color: #3f3f3f;
+      font-size: 0.85rem;
+      padding: 40px 20px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ── Footer / countdown ─────────────────────────────────────── */
+    .footer {
+      margin-top: 8px;
+      font-size: 0.68rem;
+      color: #404040;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    #windows-list {
+      font-size: 0.68rem;
+      color: #404040;
+      word-break: break-all;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+    a { color: inherit; text-decoration: underline; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>Screen Monitor</h1>
+      <div class="subtitle" id="target-label">Connecting…</div>
+    </div>
+    <button id="refresh-btn">↻ Refresh</button>
+  </header>
+
+  <div class="status-bar">
+    <div>
+      <span class="label">Status </span>
+      <span class="value" id="status-badge"><span class="badge badge-pending">● pending</span></span>
+    </div>
+    <div>
+      <span class="label">Last capture </span>
+      <span class="value" id="last-capture">—</span>
+    </div>
+    <div id="error-row" style="display:none">
+      <span class="label">Error </span>
+      <span class="value" id="error-msg" style="color:#f87171"></span>
+    </div>
+  </div>
+
+  <div class="screenshot-wrap">
+    <img id="screenshot-img" alt="Latest screenshot" style="display:none">
+    <div id="no-image-msg">
+      No screenshot yet.<br>
+      <small>Check status above — the app may still be starting.</small>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>
+      Auto-refresh in <span id="countdown">30</span>s
+      &nbsp;·&nbsp;
+      <a onclick="toggleWindows()">available windows ▾</a>
+      <div id="windows-list" style="display:none"></div>
+    </div>
+    <div id="server-time"></div>
+  </div>
+
+  <script>
+    // ── Token from URL ────────────────────────────────────────────────────────
+    // The page is loaded as /?token=X so JS can forward auth to API calls.
+    const token = new URLSearchParams(window.location.search).get('token') || '';
+
+    function api(endpoint) {
+      // Append token (and a cache-bust for the screenshot) to every request.
+      return `${endpoint}?token=${encodeURIComponent(token)}&_=${Date.now()}`;
+    }
+
+    // ── Status badge HTML ─────────────────────────────────────────────────────
+    function badgeHtml(status) {
+      const map = {
+        ok:       ['badge-ok',       '● ok'],
+        fallback: ['badge-fallback',  '⚠ fallback'],
+        error:    ['badge-error',     '✕ error'],
+        pending:  ['badge-pending',   '◌ pending'],
+      };
+      const [cls, label] = map[status] || ['badge-pending', status || 'unknown'];
+      return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    // ── Fetch and display status JSON ─────────────────────────────────────────
+    async function refreshStatus() {
+      try {
+        const res = await fetch(api('/status'));
+        if (!res.ok) {
+          document.getElementById('target-label').textContent =
+            res.status === 401 ? 'Auth failed — check token in URL' : `Server error ${res.status}`;
+          return;
+        }
+        const d = await res.json();
+
+        document.getElementById('target-label').textContent =
+          `Watching: "${d.targetWindow}"`;
+
+        document.getElementById('status-badge').innerHTML = badgeHtml(d.status);
+
+        document.getElementById('last-capture').textContent =
+          d.lastCaptureTime
+            ? new Date(d.lastCaptureTime).toLocaleString()
+            : '—';
+
+        const errorRow = document.getElementById('error-row');
+        if (d.error) {
+          errorRow.style.display = '';
+          document.getElementById('error-msg').textContent = d.error;
+        } else {
+          errorRow.style.display = 'none';
+        }
+
+        if (d.availableWindows) {
+          document.getElementById('windows-list').textContent =
+            'Open windows: ' + d.availableWindows;
+        }
+
+        document.getElementById('server-time').textContent =
+          'Server: ' + new Date(d.serverTime).toLocaleTimeString();
+
+      } catch (e) {
+        document.getElementById('target-label').textContent =
+          'Cannot reach server — is the app running?';
+      }
+    }
+
+    // ── Fetch and display screenshot ──────────────────────────────────────────
+    function refreshScreenshot() {
+      const img = document.getElementById('screenshot-img');
+      const noMsg = document.getElementById('no-image-msg');
+
+      // Load into a temp Image to detect 404 before swapping src
+      const tmp = new Image();
+      tmp.onload = () => {
+        img.src = tmp.src;
+        img.style.display = 'block';
+        noMsg.style.display = 'none';
+      };
+      tmp.onerror = () => {
+        img.style.display = 'none';
+        noMsg.style.display = '';
+      };
+      tmp.src = api('/screenshot');
+    }
+
+    // ── Combined refresh ──────────────────────────────────────────────────────
+    function doRefresh() {
+      refreshStatus();
+      refreshScreenshot();
+    }
+
+    // ── 30-second countdown + auto-refresh ───────────────────────────────────
+    let countdown = 30;
+    setInterval(() => {
+      countdown--;
+      document.getElementById('countdown').textContent = countdown;
+      if (countdown <= 0) {
+        countdown = 30;
+        doRefresh();
+      }
+    }, 1000);
+
+    // ── Manual refresh button ─────────────────────────────────────────────────
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+      countdown = 30;
+      doRefresh();
+    });
+
+    // ── Toggle available windows list ─────────────────────────────────────────
+    function toggleWindows() {
+      const el = document.getElementById('windows-list');
+      el.style.display = el.style.display === 'none' ? '' : 'none';
+    }
+
+    // ── Initial load ──────────────────────────────────────────────────────────
+    doRefresh();
+  </script>
+
+</body>
+</html>
