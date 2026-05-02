@@ -179,6 +179,13 @@ The oldest screenshots are deleted automatically once the folder reaches your `H
 
 ---
 
+## License
+
+Free for personal use. See [LICENSE](LICENSE) for details.
+For commercial use, contact thedevguy0101@gmail.com.
+
+---
+
 ## Uninstalling
 
 Go to **Settings → Apps**, find **ScreenMonitor**, and click Uninstall. Your screenshots and `.env` file in `%APPDATA%\ScreenMonitor\` are not removed by the uninstaller — delete that folder manually if you want a completely clean removal.
