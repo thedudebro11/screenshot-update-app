@@ -17,10 +17,10 @@ const path   = require('path');
 const fs     = require('fs');
 const crypto = require('crypto');
 const config = require('./config');
-const { captureWindow }            = require('./capture');
-const { startServer }              = require('./server');
-const { startTunnel }              = require('./tunnel');
-const { autoUpdater }              = require('electron-updater');
+const { captureWindow }               = require('./capture');
+const { startServer }                 = require('./server');
+const { startTunnel }                 = require('./tunnel');
+const { autoUpdater }                 = require('electron-updater');
 const { alertFailure, alertRecovery } = require('./notify');
 
 // ── Shared state (read by the Express server) ──────────────────────────────
@@ -33,21 +33,32 @@ const state = {
   lastCaptureHash:   null,       // SHA256 of last saved PNG — change detection
   consecutiveNonOk:  0,          // streak of non-ok captures for Discord alerting
   wasAlerting:       false,      // true after we've sent a failure alert
+  targetWindowTitle: config.targetWindowTitle, // mirrors config; updated by setTargetWindow
+  captureIntervalMs: config.captureIntervalMs, // mirrors config; updated by setCaptureInterval
 };
 
-let tray           = null;
+let tray            = null;
 let captureInterval = null;
-let tunnelProcess  = null;
-let notifyClients  = () => {}; // replaced after startServer()
+let tunnelProcess   = null;
+let notifyClients   = () => {};  // replaced after startServer()
+let isCapturing     = false;     // concurrency guard — prevents overlapping captures
+let updateReady     = false;     // true when electron-updater has a downloaded update
+let windowList      = [];        // latest known open windows for tray submenu
 
 // ── Logging ────────────────────────────────────────────────────────────────
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
   console.log(line);
   try {
+    // Rotate at 5 MB so the log never grows unbounded.
+    try {
+      if (fs.statSync(config.logPath).size > 5 * 1024 * 1024) {
+        fs.renameSync(config.logPath, config.logPath + '.old');
+      }
+    } catch (_) {}
     fs.appendFileSync(config.logPath, line + '\n');
   } catch (_) {
-    // Swallow log errors so they never crash the main loop
+    // Swallow log errors so they never crash the main loop.
   }
 }
 
@@ -58,88 +69,172 @@ function ensureDirs() {
   }
 }
 
+// ── Tray tooltip helper ────────────────────────────────────────────────────
+function relTimeTray(iso) {
+  if (!iso) return 'never';
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 5)     return 'just now';
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function updateTooltip() {
+  if (!tray) return;
+  const elapsed = relTimeTray(state.lastCaptureTime);
+  const label   = { ok: 'OK', fallback: 'FALLBACK', error: 'ERROR', pending: 'PENDING' }[state.lastCaptureStatus] || 'PENDING';
+  tray.setToolTip(`ScreenMonitor — ${config.targetWindowTitle}\nLast: ${elapsed} (${label})`);
+}
+
 // ── Capture & save ─────────────────────────────────────────────────────────
 async function doCapture() {
-  log(`Capturing "${config.targetWindowTitle}"...`);
+  if (isCapturing) {
+    log('Capture skipped — previous capture still running');
+    return;
+  }
+  isCapturing = true;
 
-  const result = await captureWindow(config.targetWindowTitle, true);
+  try {
+    log(`Capturing "${config.targetWindowTitle}"...`);
 
-  if (result.success) {
-    // ── Change detection ───────────────────────────────────────────────
-    const hash    = crypto.createHash('sha256').update(result.pngBuffer).digest('hex');
-    const changed = hash !== state.lastCaptureHash;
+    const result = await captureWindow(config.targetWindowTitle, true);
 
-    // Update status regardless — proves the app is alive in the web viewer
-    state.lastCaptureTime   = new Date().toISOString();
-    state.lastCaptureStatus = result.isFallback ? 'fallback' : 'ok';
-    state.lastError         = null;
-    state.availableWindows  = result.availableWindows || '';
+    // Keep window list fresh for the "Set Target Window" tray submenu.
+    const rawList = (result.availableWindows || '').split(' | ').filter(Boolean);
+    if (rawList.length > 0) windowList = rawList;
 
-    // ── Alert tracking ─────────────────────────────────────────────────
-    if (result.isFallback) {
-      // Window missing — count toward alert threshold
+    if (result.success) {
+      // ── Change detection ───────────────────────────────────────────────
+      const hash    = crypto.createHash('sha256').update(result.pngBuffer).digest('hex');
+      const changed = hash !== state.lastCaptureHash;
+
+      // Update status regardless — proves the app is alive in the web viewer
+      state.lastCaptureTime   = new Date().toISOString();
+      state.lastCaptureStatus = result.isFallback ? 'fallback' : 'ok';
+      state.lastError         = null;
+      state.availableWindows  = result.availableWindows || '';
+
+      // ── Alert tracking ─────────────────────────────────────────────────
+      if (result.isFallback) {
+        state.consecutiveNonOk++;
+        if (state.consecutiveNonOk === config.discordAlertAfter && !state.wasAlerting) {
+          alertFailure(
+            config.discordWebhookUrl,
+            `"${config.targetWindowTitle}" not found — using full-screen fallback`,
+            config.targetWindowTitle
+          );
+          state.wasAlerting = true;
+          log(`Discord: failure alert sent (${config.discordAlertAfter} consecutive fallbacks)`);
+        }
+      } else {
+        if (state.wasAlerting) {
+          alertRecovery(config.discordWebhookUrl, config.targetWindowTitle);
+          log('Discord: recovery alert sent');
+        }
+        state.consecutiveNonOk = 0;
+        state.wasAlerting      = false;
+      }
+
+      if (!changed) {
+        log('No change detected — skipping save');
+        return;
+      }
+
+      // ── Save new screenshot ────────────────────────────────────────────
+      try {
+        const ts       = Date.now();
+        const filePath = path.join(config.screenshotDir, `${ts}.png`);
+        fs.writeFileSync(filePath, result.pngBuffer);
+        state.lastCaptureHash = hash;
+
+        const all = fs.readdirSync(config.screenshotDir)
+          .filter(f => /^\d+\.png$/.test(f))
+          .sort();
+        all.slice(0, Math.max(0, all.length - config.historyLimit))
+          .forEach(f => fs.unlinkSync(path.join(config.screenshotDir, f)));
+
+        log(`Saved: ${result.windowName} (${(result.pngBuffer.length / 1024).toFixed(1)} KB)`);
+        notifyClients({ type: 'screenshot', t: ts });
+      } catch (err) {
+        state.lastCaptureStatus = 'error';
+        state.lastError         = `Could not save file: ${err.message}`;
+        log(`Save error: ${err.message}`);
+      }
+
+    } else {
+      // ── Capture failed entirely ────────────────────────────────────────
+      state.lastCaptureStatus = 'error';
+      state.lastError         = result.error;
+      state.availableWindows  = result.availableWindows || '';
+      log(`Capture failed: ${result.error}`);
+      if (result.availableWindows) log(`Available windows: ${result.availableWindows}`);
+
       state.consecutiveNonOk++;
       if (state.consecutiveNonOk === config.discordAlertAfter && !state.wasAlerting) {
-        alertFailure(
-          config.discordWebhookUrl,
-          `"${config.targetWindowTitle}" not found — using full-screen fallback`,
-          config.targetWindowTitle
-        );
+        alertFailure(config.discordWebhookUrl, result.error, config.targetWindowTitle);
         state.wasAlerting = true;
-        log(`Discord: failure alert sent (${config.discordAlertAfter} consecutive fallbacks)`);
+        log(`Discord: failure alert sent (${config.discordAlertAfter} consecutive errors)`);
       }
-    } else {
-      // True ok — reset streak and send recovery if we were alerting
-      if (state.wasAlerting) {
-        alertRecovery(config.discordWebhookUrl, config.targetWindowTitle);
-        log('Discord: recovery alert sent');
-      }
-      state.consecutiveNonOk = 0;
-      state.wasAlerting      = false;
     }
-
-    // ── Skip save if nothing changed ───────────────────────────────────
-    if (!changed) {
-      log('No change detected — skipping save');
-      return;
-    }
-
-    // ── Save new screenshot ────────────────────────────────────────────
-    try {
-      const ts       = Date.now();
-      const filePath = path.join(config.screenshotDir, `${ts}.png`);
-      fs.writeFileSync(filePath, result.pngBuffer);
-      state.lastCaptureHash = hash;
-
-      const all = fs.readdirSync(config.screenshotDir)
-        .filter(f => /^\d+\.png$/.test(f))
-        .sort();
-      all.slice(0, Math.max(0, all.length - config.historyLimit))
-        .forEach(f => fs.unlinkSync(path.join(config.screenshotDir, f)));
-
-      log(`Saved: ${result.windowName} (${(result.pngBuffer.length / 1024).toFixed(1)} KB)`);
-      notifyClients({ type: 'screenshot', t: ts });
-    } catch (err) {
-      state.lastCaptureStatus = 'error';
-      state.lastError         = `Could not save file: ${err.message}`;
-      log(`Save error: ${err.message}`);
-    }
-
-  } else {
-    // ── Capture failed entirely ────────────────────────────────────────
+  } catch (err) {
+    // Outer guard — captureWindow() itself shouldn't throw, but just in case.
+    log(`Unexpected capture error: ${err.message}`);
     state.lastCaptureStatus = 'error';
-    state.lastError         = result.error;
-    state.availableWindows  = result.availableWindows || '';
-    log(`Capture failed: ${result.error}`);
-    if (result.availableWindows) log(`Available windows: ${result.availableWindows}`);
-
-    state.consecutiveNonOk++;
-    if (state.consecutiveNonOk === config.discordAlertAfter && !state.wasAlerting) {
-      alertFailure(config.discordWebhookUrl, result.error, config.targetWindowTitle);
-      state.wasAlerting = true;
-      log(`Discord: failure alert sent (${config.discordAlertAfter} consecutive errors)`);
-    }
+    state.lastError         = `Unexpected error: ${err.message}`;
+  } finally {
+    isCapturing = false;
+    updateTooltip();
   }
+}
+
+// ── Change target window at runtime (no restart needed) ────────────────────
+function setTargetWindow(name) {
+  const envPath = path.join(config.dataDir, '.env');
+  try {
+    let content = '';
+    try { content = fs.readFileSync(envPath, 'utf8'); } catch(_) {}
+    if (/^TARGET_WINDOW_TITLE=.*$/m.test(content)) {
+      content = content.replace(/^TARGET_WINDOW_TITLE=.*$/m, `TARGET_WINDOW_TITLE=${name}`);
+    } else {
+      content = content.trimEnd() + `\nTARGET_WINDOW_TITLE=${name}\n`;
+    }
+    fs.writeFileSync(envPath, content);
+  } catch (err) {
+    log(`Could not update .env: ${err.message}`);
+  }
+  config.targetWindowTitle  = name;
+  state.targetWindowTitle   = name;
+  log(`Target window changed to: "${name}"`);
+  tray.setContextMenu(buildMenu(state.tunnelUrl));
+  doCapture();
+}
+
+// ── Change capture interval at runtime ────────────────────────────────────
+function setCaptureInterval(minutes) {
+  const ms = Math.round(minutes * 60 * 1000);
+  config.captureIntervalMs  = ms;
+  state.captureIntervalMs   = ms;
+
+  clearInterval(captureInterval);
+  captureInterval = setInterval(doCapture, ms);
+
+  const envPath = path.join(config.dataDir, '.env');
+  try {
+    let content = '';
+    try { content = fs.readFileSync(envPath, 'utf8'); } catch(_) {}
+    if (/^CAPTURE_INTERVAL_MINUTES=.*$/m.test(content)) {
+      content = content.replace(/^CAPTURE_INTERVAL_MINUTES=.*$/m, `CAPTURE_INTERVAL_MINUTES=${minutes}`);
+    } else {
+      content = content.trimEnd() + `\nCAPTURE_INTERVAL_MINUTES=${minutes}\n`;
+    }
+    fs.writeFileSync(envPath, content);
+  } catch (err) {
+    log(`Could not write interval to .env: ${err.message}`);
+  }
+
+  log(`Capture interval changed to ${minutes} minute(s)`);
+  tray.setContextMenu(buildMenu(state.tunnelUrl));
 }
 
 // ── PNG icon builder (no canvas, no extra packages) ────────────────────────
@@ -193,6 +288,17 @@ function buildMenu(tunnelUrl = null) {
   const localUrl  = `http://localhost:${config.port}/?token=${config.authToken}`;
   const remoteUrl = tunnelUrl ? `${tunnelUrl}/?token=${config.authToken}` : null;
 
+  // Submenu listing every open window — user clicks one to switch the target.
+  // Populated from the last capture result; shows a placeholder on first start.
+  const windowItems = windowList.length > 0
+    ? windowList.map(name => ({
+        label:   name.length > 50 ? name.slice(0, 47) + '…' : name,
+        type:    'radio',
+        checked: name.toLowerCase().includes(config.targetWindowTitle.toLowerCase()),
+        click:   () => setTargetWindow(name),
+      }))
+    : [{ label: 'Capture once to populate list', enabled: false }];
+
   const items = [
     { label: 'ScreenMonitor', enabled: false },
     { label: `Token: ${config.authToken}`, enabled: false },
@@ -211,19 +317,47 @@ function buildMenu(tunnelUrl = null) {
     items.push({ label: 'Remote: connecting...', enabled: false });
   }
 
+  const currentMinutes = config.captureIntervalMs / 60000;
+  const intervalOptions = [
+    { label: '30 seconds', value: 0.5  },
+    { label: '1 minute',   value: 1    },
+    { label: '2 minutes',  value: 2    },
+    { label: '5 minutes',  value: 5    },
+    { label: '10 minutes', value: 10   },
+    { label: '30 minutes', value: 30   },
+  ];
+  const intervalItems = intervalOptions.map(({ label, value }) => ({
+    label,
+    type:    'radio',
+    checked: Math.abs(currentMinutes - value) < 0.01,
+    click:   () => setCaptureInterval(value),
+  }));
+
   items.push(
     { type: 'separator' },
-    { label: 'Open Data Folder', click: () => shell.openPath(config.dataDir) },
+    { label: `Watching: ${config.targetWindowTitle}`, enabled: false },
+    { label: 'Set Target Window', submenu: windowItems },
+    { label: 'Capture Interval',  submenu: intervalItems },
     { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        clearInterval(captureInterval);
-        tunnelProcess?.stop();
-        app.quit();
-      },
-    }
+    { label: 'Open Data Folder', click: () => shell.openPath(config.dataDir) },
+    { type: 'separator' }
   );
+
+  if (updateReady) {
+    items.push(
+      { label: 'Restart to Apply Update', click: () => autoUpdater.quitAndInstall() },
+      { type: 'separator' }
+    );
+  }
+
+  items.push({
+    label: 'Quit',
+    click: () => {
+      clearInterval(captureInterval);
+      tunnelProcess?.stop();
+      app.quit();
+    },
+  });
 
   return Menu.buildFromTemplate(items);
 }
@@ -234,13 +368,13 @@ function createTray() {
   const icon      = nativeImage.createFromBuffer(pngBuffer);
 
   tray = new Tray(icon);
-  tray.setToolTip('ScreenMonitor — right-click for options');
+  tray.setToolTip('ScreenMonitor — starting...');
   tray.setContextMenu(buildMenu());
 
   const localUrl = `http://localhost:${config.port}/?token=${config.authToken}`;
   tray.displayBalloon({
     title:    'ScreenMonitor is running',
-    content:  `Local viewer: ${localUrl}\n\nWaiting for remote tunnel...`,
+    content:  `Local viewer:\n${localUrl}\n\nWaiting for remote tunnel...`,
     iconType: 'info',
     noSound:  true,
   });
@@ -256,12 +390,13 @@ app.whenReady().then(() => {
   log(`Target window title: "${config.targetWindowTitle}"`);
   log(`Capture interval: ${config.captureIntervalMs / 60000} min`);
   log(`Web viewer: http://localhost:${config.port}/?token=${config.authToken}`);
-  log(`Screenshot path: ${config.screenshotPath}`);
+  log(`Screenshot directory: ${config.screenshotDir}`);
 
   ({ notifyClients } = startServer({
     getState:          () => state,
     screenshotDir:     config.screenshotDir,
     targetWindowTitle: config.targetWindowTitle,
+    onIntervalChange:  (minutes) => setCaptureInterval(minutes),
   }));
 
   createTray();
@@ -283,10 +418,12 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify();
     autoUpdater.on('update-downloaded', () => {
-      log('Update downloaded — will install on next restart');
+      updateReady = true;
+      log('Update downloaded — restart to apply');
+      tray.setContextMenu(buildMenu(state.tunnelUrl));
       tray.displayBalloon({
         title:    'ScreenMonitor update ready',
-        content:  'A new version has been downloaded. Restart the app to apply it.',
+        content:  'Right-click the tray icon → "Restart to Apply Update".',
         iconType: 'info',
         noSound:  true,
       });

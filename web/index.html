@@ -114,9 +114,24 @@
       color: var(--muted);
       font-size: 11px;
       letter-spacing: 0.05em;
-      min-width: 80px;
+      min-width: 70px;
       text-align: right;
     }
+
+    #interval-select {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      padding: 4px 6px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    #interval-select:hover  { border-color: var(--accent); color: var(--text); }
+    #interval-select:focus  { border-color: var(--accent); color: var(--text); }
 
     button {
       background: var(--surface2);
@@ -374,7 +389,15 @@
     <span id="status-text">CONNECTING</span>
   </div>
   <div id="header-right">
-    <span id="countdown"></span>
+    <select id="interval-select" title="How often a new screenshot is captured">
+      <option value="0.5">📸 30s</option>
+      <option value="1"  >📸 1m</option>
+      <option value="2"  >📸 2m</option>
+      <option value="5"  >📸 5m</option>
+      <option value="10" >📸 10m</option>
+      <option value="30" >📸 30m</option>
+    </select>
+    <button id="btn-download" title="Download current screenshot">↓ Save</button>
     <button id="btn-refresh">Refresh</button>
   </div>
 </div>
@@ -408,6 +431,10 @@
   <div class="meta-item">
     <span class="meta-label">Saved</span>
     <span class="meta-value" id="meta-count">—</span>
+  </div>
+  <div class="meta-item" id="disk-item" style="display:none">
+    <span class="meta-label">Disk</span>
+    <span class="meta-value" id="meta-disk">—</span>
   </div>
   <div id="meta-right">
     <span id="error-msg"></span>
@@ -446,10 +473,12 @@
   function relTime(iso) {
     if (!iso) return '—';
     const s = Math.floor((Date.now() - new Date(iso)) / 1000);
-    if (s < 5)    return 'just now';
-    if (s < 60)   return `${s}s ago`;
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    return `${Math.floor(s / 3600)}h ago`;
+    if (s < 5)      return 'just now';
+    if (s < 60)     return `${s}s ago`;
+    if (s < 3600)   return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400)  return `${Math.floor(s / 3600)}h ago`;
+    if (s < 604800) return `${Math.floor(s / 86400)}d ago`;
+    return `${Math.floor(s / 604800)}w ago`;
   }
 
   function fmtTs(t) {
@@ -499,6 +528,29 @@
     document.getElementById('meta-captured').textContent = relTime(s.lastCaptureTime);
     document.getElementById('meta-count').textContent    = s.screenshotCount != null ? `${s.screenshotCount}` : '—';
     document.getElementById('meta-clock').textContent    = s.serverTime ? new Date(s.serverTime).toLocaleTimeString() : '';
+
+    // Sync interval selector to current server-side capture interval
+    if (s.captureIntervalMs != null) {
+      const sel     = document.getElementById('interval-select');
+      const minutes = s.captureIntervalMs / 60000;
+      // Pick the closest option
+      let best = null, bestDiff = Infinity;
+      for (const opt of sel.options) {
+        const diff = Math.abs(parseFloat(opt.value) - minutes);
+        if (diff < bestDiff) { bestDiff = diff; best = opt; }
+      }
+      if (best && bestDiff < 0.1) sel.value = best.value;
+    }
+
+    // Disk usage — warn at 300 MB, error at 500 MB
+    if (s.screenshotSizeKb != null) {
+      const mb    = s.screenshotSizeKb / 1024;
+      const diskEl = document.getElementById('meta-disk');
+      const diskItem = document.getElementById('disk-item');
+      diskEl.textContent = mb < 1000 ? `${mb.toFixed(0)} MB` : `${(mb / 1024).toFixed(1)} GB`;
+      diskEl.className   = 'meta-value' + (mb > 500 ? ' mv-error' : mb > 300 ? ' mv-fallback' : '');
+      diskItem.style.display = '';
+    }
 
     const errEl = document.getElementById('error-msg');
     if (s.error) { errEl.textContent = s.error; errEl.style.display = 'block'; }
@@ -597,13 +649,16 @@
     // updateCountdown() is a no-op when isLive is false, so display is unaffected.
   }
 
-  function goLive(resetTimer = true) {
+  function goLive() {
     isLive   = true;
     document.getElementById('btn-live').classList.add('active');
-    currentT = screenshots[0]?.t || null;
-    syncDots();
-    doRefresh();
-    if (resetTimer) startTick();
+    fetchTimeline().then(() => {
+      currentT = screenshots[0]?.t || null;
+      syncDots();
+      loadShot(null);
+    });
+    renderStatus(lastStatus, !isOnline);
+    hideBanner();
   }
 
   // ── Navigate prev / next ───────────────────────────────────────────
@@ -637,14 +692,33 @@
     }, 1000);
   }
 
-  function updateCountdown() {
-    if (isLive) document.getElementById('countdown').textContent = `REFRESH ${countdownN}s`;
-  }
+  function updateCountdown() { /* timer runs silently — no display */ }
 
   // ── Events ─────────────────────────────────────────────────────────
-  document.getElementById('btn-refresh').addEventListener('click', () => goLive(false));
+  document.getElementById('btn-refresh').addEventListener('click', () => {
+    doRefresh();
+  });
 
-  document.getElementById('btn-live').addEventListener('click', goLive);
+  document.getElementById('interval-select').addEventListener('change', async (e) => {
+    const minutes = parseFloat(e.target.value);
+    try {
+      await fetch(api(`/config/interval?minutes=${minutes}`));
+    } catch(_) {}
+  });
+
+  document.getElementById('btn-download').addEventListener('click', () => {
+    const t        = currentT;
+    const url      = t ? api(`/screenshot?t=${t}`) : api(`/screenshot?_=${Date.now()}`);
+    const filename = `screenmonitor-${t || Date.now()}.png`;
+    const a        = document.createElement('a');
+    a.href         = url;
+    a.download     = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+
+  document.getElementById('btn-live').addEventListener('click', () => goLive());
   document.getElementById('btn-prev').addEventListener('click', () => navigate(1));
   document.getElementById('btn-next').addEventListener('click', () => navigate(-1));
 
@@ -652,6 +726,7 @@
     if (e.key === 'ArrowLeft')       navigate(1);
     if (e.key === 'ArrowRight')      navigate(-1);
     if (e.key === 'l' || e.key === 'L') goLive();
+
   });
 
   // ── Zoom & pan ─────────────────────────────────────────────────────
@@ -774,13 +849,16 @@
     src.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.type === 'screenshot' && isLive) {
+        if (data.type === 'screenshot') {
           fetchTimeline().then(() => {
-            currentT = screenshots[0]?.t || null;
-            loadShot(null);
-            syncDots();
-            countdownN = 30;
-            updateCountdown();
+            if (isLive) {
+              currentT = screenshots[0]?.t || null;
+              loadShot(null);
+              syncDots();
+            } else {
+              // New dot appears in timeline even while browsing history
+              renderTimeline();
+            }
           });
           fetchStatus();
         }
@@ -789,6 +867,15 @@
     // onerror is fine to ignore — EventSource auto-reconnects,
     // and the 30s poll loop is the fallback.
   })();
+
+  // ── Live relative-time ticker ──────────────────────────────────────
+  // Re-renders "Captured: Xs ago" every second from the cached timestamp.
+  // No network call — purely client-side recompute.
+  setInterval(() => {
+    if (lastStatus?.lastCaptureTime) {
+      document.getElementById('meta-captured').textContent = relTime(lastStatus.lastCaptureTime);
+    }
+  }, 1000);
 
   // ── Boot ───────────────────────────────────────────────────────────
   doRefresh().then(() => {

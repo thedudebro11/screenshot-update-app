@@ -13,7 +13,7 @@ const { spawn } = require('child_process');
 const path     = require('path');
 const fs       = require('fs');
 
-const TUNNEL_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+const TUNNEL_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
 const TIMEOUT_MS    = 40_000;
 
 function getBinaryPath() {

@@ -24,7 +24,7 @@ function listScreenshots(dir) {
     .reverse(); // newest first
 }
 
-function startServer({ getState, screenshotDir, targetWindowTitle }) {
+function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalChange }) {
   const app     = express();
   const clients = new Set(); // active SSE connections
 
@@ -90,17 +90,35 @@ function startServer({ getState, screenshotDir, targetWindowTitle }) {
     const s     = getState();
     const files = listScreenshots(screenshotDir);
 
+    // Sum screenshot directory size for the disk usage warning in the viewer.
+    const sizeKb = files.reduce((acc, f) => {
+      try { return acc + fs.statSync(path.join(screenshotDir, f)).size; } catch(_) { return acc; }
+    }, 0) / 1024;
+
     res.json({
-      targetWindow:    targetWindowTitle,
-      status:          s.lastCaptureStatus,
-      lastCaptureTime: s.lastCaptureTime,
-      error:           s.lastError || null,
+      targetWindow:     s.targetWindowTitle || targetWindowTitle,
+      status:           s.lastCaptureStatus,
+      lastCaptureTime:  s.lastCaptureTime,
+      error:            s.lastError || null,
       availableWindows: s.availableWindows || null,
-      tunnelUrl:       s.tunnelUrl || null,
-      screenshotCount: files.length,
+      tunnelUrl:        s.tunnelUrl || null,
+      screenshotCount:  files.length,
       screenshotExists: files.length > 0,
-      serverTime:      new Date().toISOString(),
+      screenshotSizeKb:  Math.round(sizeKb),
+      captureIntervalMs: s.captureIntervalMs || null,
+      serverTime:        new Date().toISOString(),
     });
+  });
+
+  // ── GET /config/interval ──────────────────────────────────────────────────
+  // Lets the web viewer change how often screenshots are captured.
+  app.get('/config/interval', (req, res) => {
+    const minutes = parseFloat(req.query.minutes);
+    if (isNaN(minutes) || minutes < 0.1 || minutes > 120) {
+      return res.status(400).json({ error: 'minutes must be between 0.1 and 120' });
+    }
+    if (typeof onIntervalChange === 'function') onIntervalChange(minutes);
+    res.json({ ok: true, minutes });
   });
 
   // ── GET /events ───────────────────────────────────────────────────────────
@@ -113,11 +131,12 @@ function startServer({ getState, screenshotDir, targetWindowTitle }) {
     res.flushHeaders();
 
     clients.add(res);
-    req.on('close', () => clients.delete(res));
-
     // Heartbeat keeps the connection alive through proxies and Cloudflare.
     const hb = setInterval(() => res.write(':heartbeat\n\n'), 25_000);
-    req.on('close', () => clearInterval(hb));
+    req.on('close', () => {
+      clients.delete(res);
+      clearInterval(hb);
+    });
   });
 
   // ── GET / ──────────────────────────────────────────────────────────────────

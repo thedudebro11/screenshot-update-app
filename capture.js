@@ -43,16 +43,16 @@ async function captureWindow(targetTitle, fullscreenFallback = true) {
       fetchWindowIcons: false,
     });
 
+    // Build full window list once — used in both success and failure paths
+    // so main.js can always populate the "Set Target Window" tray submenu.
+    const availableWindows = windowSources.map(s => s.name).filter(Boolean).join(' | ');
+
     // Partial, case-insensitive match on window title.
     const target = windowSources.find(
       (s) => s.name && s.name.toLowerCase().includes(targetTitle.toLowerCase())
     );
 
     if (!target) {
-      const availableWindows = windowSources
-        .map((s) => s.name)
-        .filter(Boolean)
-        .join(' | ');
 
       if (!fullscreenFallback) {
         return {
@@ -91,13 +91,16 @@ async function captureWindow(targetTitle, fullscreenFallback = true) {
       return {
         success: false,
         error: `"${target.name}" was found but returned a blank image. The window may be minimized or fully off-screen.`,
+        availableWindows,
       };
     }
 
     return {
       success: true,
-      windowName: target.name,
+      windowName:      target.name,
       pngBuffer,
+      isFallback:      false,
+      availableWindows,
     };
   } catch (err) {
     return {
