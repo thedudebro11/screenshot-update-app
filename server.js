@@ -1,81 +1,126 @@
 /**
  * server.js
  *
- * A minimal Express server that:
- *   GET /            → serves the web viewer HTML page
- *   GET /screenshot  → serves the latest PNG screenshot
- *   GET /status      → returns JSON with capture status info
+ *   GET /              → serves the web viewer HTML page
+ *   GET /screenshot    → serves a PNG (latest, or ?t=<timestamp> for history)
+ *   GET /screenshots   → JSON list of all available screenshot timestamps
+ *   GET /status        → JSON with capture status, tunnel URL, etc.
  *
  * Every request must include the auth token as either:
  *   - Query param:  ?token=YOUR_TOKEN
  *   - HTTP header:  X-Auth-Token: YOUR_TOKEN
- *
- * The server binds to 0.0.0.0 (all interfaces) so that Tailscale or
- * Cloudflare Tunnel can forward traffic to it from outside. See README.md
- * for how to set that up safely.
  */
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const config = require('./config');
+const fs      = require('fs');
+const path    = require('path');
+const config  = require('./config');
 
-function startServer({ getState, screenshotPath, targetWindowTitle }) {
-  const app = express();
+function listScreenshots(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter(f => /^\d+\.png$/.test(f))
+    .sort()
+    .reverse(); // newest first
+}
+
+function startServer({ getState, screenshotDir, targetWindowTitle }) {
+  const app     = express();
+  const clients = new Set(); // active SSE connections
 
   // ── Token auth middleware ──────────────────────────────────────────────────
-  // Applied to every route. Returns 401 for missing/wrong tokens.
   app.use((req, res, next) => {
-    const token =
-      req.query.token ||
-      req.headers['x-auth-token'];
-
+    const token = req.query.token || req.headers['x-auth-token'];
     if (!token || token !== config.authToken) {
-      res
-        .status(401)
-        .type('text')
-        .send(
-          '401 Unauthorized\n\n' +
-          'Add ?token=YOUR_TOKEN to the URL.\n' +
-          'The token is set in your .env file as AUTH_TOKEN.'
-        );
+      res.status(401).type('text').send(
+        '401 Unauthorized\n\nAdd ?token=YOUR_TOKEN to the URL.\n' +
+        'The token is shown in the tray menu and in your .env file as AUTH_TOKEN.'
+      );
       return;
     }
     next();
   });
 
   // ── GET /screenshot ────────────────────────────────────────────────────────
-  // Returns the latest PNG. Cache-Control: no-store ensures browsers always
-  // fetch a fresh copy rather than showing a cached version.
+  // Serves latest PNG by default. Pass ?t=<unix_ms> for a historical one.
   app.get('/screenshot', (req, res) => {
-    if (!fs.existsSync(screenshotPath)) {
-      res.status(404).type('text').send('No screenshot captured yet. Check /status for details.');
-      return;
+    let filePath;
+
+    if (req.query.t) {
+      const ts = parseInt(req.query.t, 10);
+      if (isNaN(ts)) return res.status(400).type('text').send('Invalid timestamp.');
+      filePath = path.join(screenshotDir, `${ts}.png`);
+    } else {
+      const files = listScreenshots(screenshotDir);
+      if (!files.length) {
+        return res.status(404).type('text').send('No screenshot captured yet. Check /status for details.');
+      }
+      filePath = path.join(screenshotDir, files[0]);
     }
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.sendFile(screenshotPath);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).type('text').send('Screenshot not found.');
+    }
+
+    // Historical screenshots have unique URLs and can be cached by the browser.
+    // Latest always gets no-cache since its URL doesn't change.
+    if (req.query.t) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+    }
+
+    res.sendFile(filePath);
+  });
+
+  // ── GET /screenshots ───────────────────────────────────────────────────────
+  // Returns a JSON list of all available screenshot timestamps (newest first).
+  app.get('/screenshots', (req, res) => {
+    const files = listScreenshots(screenshotDir);
+    const items = files.map(f => {
+      const t = parseInt(f, 10);
+      return { t, iso: new Date(t).toISOString() };
+    });
+    res.json({ files: items, latest: items[0]?.t || null, count: items.length });
   });
 
   // ── GET /status ────────────────────────────────────────────────────────────
-  // JSON object with current app state. Used by the web viewer to update labels.
   app.get('/status', (req, res) => {
-  const s = getState();
-  const screenshotExists = fs.existsSync(screenshotPath);
+    const s     = getState();
+    const files = listScreenshots(screenshotDir);
 
-  res.json({
-    targetWindow: targetWindowTitle,
-    status: s.lastCaptureStatus,
-    lastCaptureTime: s.lastCaptureTime,
-    error: s.lastError || null,
-    availableWindows: s.availableWindows || null,
-    screenshotExists,
-    serverTime: new Date().toISOString(),
+    res.json({
+      targetWindow:    targetWindowTitle,
+      status:          s.lastCaptureStatus,
+      lastCaptureTime: s.lastCaptureTime,
+      error:           s.lastError || null,
+      availableWindows: s.availableWindows || null,
+      tunnelUrl:       s.tunnelUrl || null,
+      screenshotCount: files.length,
+      screenshotExists: files.length > 0,
+      serverTime:      new Date().toISOString(),
+    });
   });
-});
+
+  // ── GET /events ───────────────────────────────────────────────────────────
+  // Server-Sent Events stream. Pushes a JSON frame whenever a new screenshot
+  // is saved so the browser updates instantly without waiting for the poll.
+  app.get('/events', (req, res) => {
+    res.setHeader('Content-Type',  'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection',    'keep-alive');
+    res.flushHeaders();
+
+    clients.add(res);
+    req.on('close', () => clients.delete(res));
+
+    // Heartbeat keeps the connection alive through proxies and Cloudflare.
+    const hb = setInterval(() => res.write(':heartbeat\n\n'), 25_000);
+    req.on('close', () => clearInterval(hb));
+  });
 
   // ── GET / ──────────────────────────────────────────────────────────────────
-  // Serve the web viewer HTML. JavaScript in the page handles API calls.
   app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'web', 'index.html'));
   });
@@ -85,7 +130,12 @@ function startServer({ getState, screenshotPath, targetWindowTitle }) {
     console.log(`[server] Web viewer: http://localhost:${config.port}/?token=${config.authToken}`);
   });
 
-  return app;
+  return {
+    notifyClients: (payload) => {
+      const frame = `data: ${JSON.stringify(payload)}\n\n`;
+      clients.forEach(c => c.write(frame));
+    },
+  };
 }
 
 module.exports = { startServer };

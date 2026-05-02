@@ -3,282 +3,802 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Screen Monitor</title>
+  <title>ScreenMonitor</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg:          #09090b;
+      --surface:     #111113;
+      --surface2:    #18181b;
+      --border:      #1c1c1f;
+      --border2:     #27272a;
+      --accent:      #22c55e;
+      --accent-dim:  rgba(34, 197, 94, 0.12);
+      --accent-glow: rgba(34, 197, 94, 0.35);
+      --text:        #e4e4e7;
+      --muted:       #52525b;
+      --muted2:      #3f3f46;
+      --warn:        #f59e0b;
+      --error:       #ef4444;
+      --font:        'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
     body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0d0d0d;
-      color: #d4d4d4;
-      min-height: 100vh;
-      padding: 14px;
-    }
-
-    /* ── Header ─────────────────────────────────────────────────── */
-    header {
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #222;
+      flex-direction: column;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 12px;
     }
-    h1 { font-size: 1rem; font-weight: 600; color: #fff; line-height: 1.3; }
-    .subtitle { font-size: 0.72rem; color: #555; margin-top: 3px; }
 
-    /* ── Refresh button ─────────────────────────────────────────── */
-    #refresh-btn {
-      flex-shrink: 0;
-      background: #1d4ed8;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 7px 14px;
-      font-size: 0.82rem;
-      font-weight: 500;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    #refresh-btn:hover { background: #1e40af; }
-    #refresh-btn:active { opacity: 0.75; }
-
-    /* ── Status bar ─────────────────────────────────────────────── */
-    .status-bar {
+    /* ── HEADER ─────────────────────────────────────────────────────── */
+    #header {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px 20px;
-      font-size: 0.76rem;
-      background: #171717;
-      border: 1px solid #1f1f1f;
-      border-radius: 6px;
-      padding: 8px 12px;
-      margin-bottom: 10px;
-    }
-    .status-bar .label { color: #555; }
-    .status-bar .value { color: #d4d4d4; }
-
-    /* Status badges */
-    .badge {
-      display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 1px 8px;
-      border-radius: 99px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.01em;
+      gap: 12px;
+      padding: 0 16px;
+      height: 44px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
-    .badge-ok       { background: #14532d; color: #86efac; }
-    .badge-fallback { background: #451a03; color: #fcd34d; }
-    .badge-error    { background: #450a0a; color: #fca5a5; }
-    .badge-pending  { background: #1c1c1c; color: #71717a; }
 
-    /* ── Screenshot ─────────────────────────────────────────────── */
-    .screenshot-wrap {
-      background: #111;
-      border: 1px solid #1f1f1f;
-      border-radius: 8px;
+    #logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      user-select: none;
+    }
+
+    #logo-mark {
+      width: 10px;
+      height: 10px;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .hdiv {
+      width: 1px;
+      height: 20px;
+      background: var(--border2);
+    }
+
+    #status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border: 1px solid var(--border2);
+      background: var(--surface2);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    #status-led {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    #status-led.ok       { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+    #status-led.pulsing  { animation: pulse 2.5s ease-in-out infinite; }
+    #status-led.fallback { background: var(--warn); }
+    #status-led.error    { background: var(--error); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--accent-glow); }
+      50%       { opacity: 0.4; box-shadow: none; }
+    }
+
+    #header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #countdown {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      min-width: 80px;
+      text-align: right;
+    }
+
+    button {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: border-color 0.12s, background 0.12s, color 0.12s;
+    }
+
+    button:hover  { border-color: var(--accent); background: var(--accent-dim); }
+    button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+    /* ── VIEWPORT ───────────────────────────────────────────────────── */
+    #viewport {
+      flex: 1;
+      position: relative;
+      background: #000;
       overflow: hidden;
-      min-height: 180px;
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-    #screenshot-img {
-      max-width: 100%;
-      height: auto;
-      display: block;
-    }
-    #no-image-msg {
-      color: #3f3f3f;
-      font-size: 0.85rem;
-      padding: 40px 20px;
-      text-align: center;
-      line-height: 1.6;
+      min-height: 0;
     }
 
-    /* ── Footer / countdown ─────────────────────────────────────── */
-    .footer {
-      margin-top: 8px;
-      font-size: 0.68rem;
-      color: #404040;
+    #viewport::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent, transparent 2px,
+        rgba(0,0,0,0.045) 2px, rgba(0,0,0,0.045) 4px
+      );
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    #screenshot {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: none;
+      position: relative;
+      z-index: 1;
+      transform-origin: 0 0;
+      will-change: transform;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    #zoom-badge {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      padding: 3px 9px;
+      background: rgba(0,0,0,0.7);
+      border: 1px solid var(--border2);
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      z-index: 4;
+      display: none;
+      pointer-events: none;
+    }
+
+    #zoom-hint {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 3px 10px;
+      background: rgba(0,0,0,0.5);
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      z-index: 4;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s;
+      white-space: nowrap;
+    }
+
+    #zoom-hint.visible { opacity: 1; }
+
+    #empty-state {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      z-index: 1;
+    }
+
+    #empty-state .glyph { font-size: 36px; color: var(--muted2); }
+    #empty-state .label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+
+    #viewport-banner {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 4px 14px;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      z-index: 3;
+      display: none;
+      white-space: nowrap;
+    }
+
+    #viewport-banner.offline {
+      display: block;
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid var(--warn);
+      color: var(--warn);
+    }
+
+    #viewport-banner.history {
+      display: block;
+      background: rgba(34, 197, 94, 0.07);
+      border: 1px solid var(--border2);
+      color: var(--muted);
+    }
+
+    /* ── META BAR ───────────────────────────────────────────────────── */
+    #meta-bar {
+      display: flex;
+      align-items: center;
+      height: 34px;
+      padding: 0 16px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-right: 16px;
+      margin-right: 16px;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .meta-item:last-of-type { border-right: none; }
+
+    .meta-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .meta-value { font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+    .mv-ok       { color: var(--accent); }
+    .mv-fallback { color: var(--warn); }
+    .mv-error    { color: var(--error); }
+    .mv-pending  { color: var(--muted); }
+
+    #meta-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    #error-msg {
+      color: var(--error);
+      font-size: 11px;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: none;
+    }
+
+    #meta-clock { color: var(--muted); font-size: 10px; }
+
+    /* ── TIMELINE ───────────────────────────────────────────────────── */
+    #timeline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      height: 38px;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    #timeline-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      min-width: 110px;
+    }
+
+    #timeline-dots {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 1px;
+      background: var(--border2);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.1s, transform 0.1s;
+    }
+
+    .dot:hover  { background: var(--muted); transform: scaleY(1.9); }
+    .dot.active { background: var(--accent); box-shadow: 0 0 4px var(--accent-glow); }
+
+    #timeline-nav {
+      display: flex;
+      align-items: center;
       gap: 4px;
+      flex-shrink: 0;
     }
-    #windows-list {
-      font-size: 0.68rem;
-      color: #404040;
-      word-break: break-all;
-      margin-top: 4px;
-      line-height: 1.5;
-    }
-    a { color: inherit; text-decoration: underline; cursor: pointer; }
+
+    #btn-prev, #btn-next { padding: 3px 9px; font-size: 14px; line-height: 1; }
+    #btn-live { font-size: 10px; padding: 3px 10px; letter-spacing: 0.1em; }
   </style>
 </head>
 <body>
 
-  <header>
-    <div>
-      <h1>Screen Monitor</h1>
-      <div class="subtitle" id="target-label">Connecting…</div>
-    </div>
-    <button id="refresh-btn">↻ Refresh</button>
-  </header>
-
-  <div class="status-bar">
-    <div>
-      <span class="label">Status </span>
-      <span class="value" id="status-badge"><span class="badge badge-pending">● pending</span></span>
-    </div>
-    <div>
-      <span class="label">Last capture </span>
-      <span class="value" id="last-capture">—</span>
-    </div>
-    <div id="error-row" style="display:none">
-      <span class="label">Error </span>
-      <span class="value" id="error-msg" style="color:#f87171"></span>
-    </div>
+<!-- HEADER -->
+<div id="header">
+  <div id="logo">
+    <div id="logo-mark"></div>
+    ScreenMonitor
   </div>
-
-  <div class="screenshot-wrap">
-    <img id="screenshot-img" alt="Latest screenshot" style="display:none">
-    <div id="no-image-msg">
-      No screenshot yet.<br>
-      <small>Check status above — the app may still be starting.</small>
-    </div>
+  <div class="hdiv"></div>
+  <div id="status-pill">
+    <div id="status-led"></div>
+    <span id="status-text">CONNECTING</span>
   </div>
-
-  <div class="footer">
-    <div>
-      Auto-refresh in <span id="countdown">30</span>s
-      &nbsp;·&nbsp;
-      <a onclick="toggleWindows()">available windows ▾</a>
-      <div id="windows-list" style="display:none"></div>
-    </div>
-    <div id="server-time"></div>
+  <div id="header-right">
+    <span id="countdown"></span>
+    <button id="btn-refresh">Refresh</button>
   </div>
+</div>
 
-  <script>
-    // ── Token from URL ────────────────────────────────────────────────────────
-    // The page is loaded as /?token=X so JS can forward auth to API calls.
-    const token = new URLSearchParams(window.location.search).get('token') || '';
+<!-- VIEWPORT -->
+<div id="viewport">
+  <div id="viewport-banner"></div>
+  <div id="empty-state">
+    <div class="glyph">◉</div>
+    <div class="label">Waiting for first capture…</div>
+  </div>
+  <img id="screenshot" alt="screenshot">
+  <div id="zoom-badge">100%</div>
+  <div id="zoom-hint">scroll to zoom · drag to pan · double-click to reset</div>
+</div>
 
-    function api(endpoint) {
-      // Append token (and a cache-bust for the screenshot) to every request.
-      return `${endpoint}?token=${encodeURIComponent(token)}&_=${Date.now()}`;
+<!-- META BAR -->
+<div id="meta-bar">
+  <div class="meta-item">
+    <span class="meta-label">Target</span>
+    <span class="meta-value" id="meta-target">—</span>
+  </div>
+  <div class="meta-item">
+    <span class="meta-label">Status</span>
+    <span class="meta-value" id="meta-status">—</span>
+  </div>
+  <div class="meta-item">
+    <span class="meta-label">Captured</span>
+    <span class="meta-value" id="meta-captured">—</span>
+  </div>
+  <div class="meta-item">
+    <span class="meta-label">Saved</span>
+    <span class="meta-value" id="meta-count">—</span>
+  </div>
+  <div id="meta-right">
+    <span id="error-msg"></span>
+    <span id="meta-clock"></span>
+  </div>
+</div>
+
+<!-- TIMELINE -->
+<div id="timeline">
+  <span id="timeline-label">HISTORY ─ 0 FRAMES</span>
+  <div id="timeline-dots"></div>
+  <div id="timeline-nav">
+    <button id="btn-prev" title="Older (←)">‹</button>
+    <button id="btn-next" title="Newer (→)">›</button>
+    <button id="btn-live" class="active">LIVE</button>
+  </div>
+</div>
+
+<script>
+  const TOKEN = new URLSearchParams(location.search).get('token') || '';
+
+  // ── State ──────────────────────────────────────────────────────────
+  let screenshots = [];   // [{ t, iso }, ...] newest first
+  let currentT    = null;
+  let isLive      = true;
+  let isOnline    = true;
+  let lastStatus  = null;
+  let countdownN  = 30;
+  let tickId      = null;
+
+  const LS_STATUS = 'sm_last_status';
+
+  // ── Helpers ────────────────────────────────────────────────────────
+  const api = (p) => p + (p.includes('?') ? '&' : '?') + `token=${TOKEN}`;
+
+  function relTime(iso) {
+    if (!iso) return '—';
+    const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (s < 5)    return 'just now';
+    if (s < 60)   return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    return `${Math.floor(s / 3600)}h ago`;
+  }
+
+  function fmtTs(t) {
+    return t ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—';
+  }
+
+  // ── Status ─────────────────────────────────────────────────────────
+  async function fetchStatus() {
+    try {
+      const res = await fetch(api('/status'));
+      if (res.status === 401) { showBanner('offline', 'AUTH FAILED — check token in URL'); return; }
+      const s = await res.json();
+      lastStatus = s;
+      try { localStorage.setItem(LS_STATUS, JSON.stringify(s)); } catch(_) {}
+      isOnline = true;
+      renderStatus(s, false);
+    } catch(_) {
+      isOnline = false;
+      let cached = null;
+      try { cached = JSON.parse(localStorage.getItem(LS_STATUS)); } catch(_) {}
+      renderStatus(cached, true);
+    }
+  }
+
+  function renderStatus(s, offline) {
+    const led = document.getElementById('status-led');
+    const txt = document.getElementById('status-text');
+
+    if (!s) {
+      led.className = '';
+      txt.textContent = 'OFFLINE';
+      showBanner('offline', '⚠  OFFLINE — CANNOT REACH SERVER');
+      return;
     }
 
-    // ── Status badge HTML ─────────────────────────────────────────────────────
-    function badgeHtml(status) {
-      const map = {
-        ok:       ['badge-ok',       '● ok'],
-        fallback: ['badge-fallback',  '⚠ fallback'],
-        error:    ['badge-error',     '✕ error'],
-        pending:  ['badge-pending',   '◌ pending'],
-      };
-      const [cls, label] = map[status] || ['badge-pending', status || 'unknown'];
-      return `<span class="badge ${cls}">${label}</span>`;
+    const code = offline ? 'offline' : (s.status || 'pending');
+    const labels = { ok:'LIVE', fallback:'FALLBACK', error:'ERROR', pending:'PENDING', offline:'OFFLINE' };
+
+    led.className = (code === 'ok' ? 'ok' : code === 'fallback' ? 'fallback' : code === 'error' ? 'error' : '');
+    if (code === 'ok' && isLive) led.classList.add('pulsing');
+    txt.textContent = labels[code] || code.toUpperCase();
+
+    document.getElementById('meta-target').textContent   = s.targetWindow || '—';
+    const ms = document.getElementById('meta-status');
+    ms.textContent  = code.toUpperCase();
+    ms.className    = `meta-value mv-${code}`;
+    document.getElementById('meta-captured').textContent = relTime(s.lastCaptureTime);
+    document.getElementById('meta-count').textContent    = s.screenshotCount != null ? `${s.screenshotCount}` : '—';
+    document.getElementById('meta-clock').textContent    = s.serverTime ? new Date(s.serverTime).toLocaleTimeString() : '';
+
+    const errEl = document.getElementById('error-msg');
+    if (s.error) { errEl.textContent = s.error; errEl.style.display = 'block'; }
+    else          { errEl.style.display = 'none'; }
+
+    if (offline) {
+      showBanner('offline', '⚠  OFFLINE — SHOWING LAST KNOWN STATE');
+    } else if (!isLive) {
+      showBanner('history', `◈  HISTORY  ${fmtTs(currentT)}`);
+    } else {
+      hideBanner();
     }
+  }
 
-    // ── Fetch and display status JSON ─────────────────────────────────────────
-    async function refreshStatus() {
-      try {
-        const res = await fetch(api('/status'));
-        if (!res.ok) {
-          document.getElementById('target-label').textContent =
-            res.status === 401 ? 'Auth failed — check token in URL' : `Server error ${res.status}`;
-          return;
-        }
-        const d = await res.json();
+  function showBanner(cls, text) {
+    const b = document.getElementById('viewport-banner');
+    b.className   = cls;
+    b.textContent = text;
+  }
 
-        document.getElementById('target-label').textContent =
-          `Watching: "${d.targetWindow}"`;
+  function hideBanner() {
+    const b = document.getElementById('viewport-banner');
+    b.className   = '';
+    b.textContent = '';
+  }
 
-        document.getElementById('status-badge').innerHTML = badgeHtml(d.status);
+  // ── Timeline ───────────────────────────────────────────────────────
+  async function fetchTimeline() {
+    try {
+      const res  = await fetch(api('/screenshots'));
+      const data = await res.json();
+      screenshots = data.files || [];
+      renderTimeline();
+    } catch(_) {}
+  }
 
-        document.getElementById('last-capture').textContent =
-          d.lastCaptureTime
-            ? new Date(d.lastCaptureTime).toLocaleString()
-            : '—';
+  function renderTimeline() {
+    const wrap  = document.getElementById('timeline-dots');
+    const label = document.getElementById('timeline-label');
+    label.textContent = `HISTORY ─ ${screenshots.length} FRAMES`;
 
-        const errorRow = document.getElementById('error-row');
-        if (d.error) {
-          errorRow.style.display = '';
-          document.getElementById('error-msg').textContent = d.error;
-        } else {
-          errorRow.style.display = 'none';
-        }
+    if (!screenshots.length) { wrap.innerHTML = ''; return; }
 
-        if (d.availableWindows) {
-          document.getElementById('windows-list').textContent =
-            'Open windows: ' + d.availableWindows;
-        }
+    const w       = wrap.clientWidth || 500;
+    const maxDots = Math.floor(w / 9);
+    let items     = [...screenshots].reverse(); // oldest → newest
 
-        document.getElementById('server-time').textContent =
-          'Server: ' + new Date(d.serverTime).toLocaleTimeString();
-
-      } catch (e) {
-        document.getElementById('target-label').textContent =
-          'Cannot reach server — is the app running?';
+    if (items.length > maxDots) {
+      const step    = Math.ceil(items.length / maxDots);
+      const sampled = items.filter((_, i) => i % step === 0);
+      if (sampled[sampled.length - 1]?.t !== items[items.length - 1]?.t) {
+        sampled.push(items[items.length - 1]);
       }
+      items = sampled;
     }
 
-    // ── Fetch and display screenshot ──────────────────────────────────────────
-    function refreshScreenshot() {
-      const img = document.getElementById('screenshot-img');
-      const noMsg = document.getElementById('no-image-msg');
-
-      // Load into a temp Image to detect 404 before swapping src
-      const tmp = new Image();
-      tmp.onload = () => {
-        img.src = tmp.src;
-        img.style.display = 'block';
-        noMsg.style.display = 'none';
-      };
-      tmp.onerror = () => {
-        img.style.display = 'none';
-        noMsg.style.display = '';
-      };
-      tmp.src = api('/screenshot');
-    }
-
-    // ── Combined refresh ──────────────────────────────────────────────────────
-    function doRefresh() {
-      refreshStatus();
-      refreshScreenshot();
-    }
-
-    // ── 30-second countdown + auto-refresh ───────────────────────────────────
-    let countdown = 30;
-    setInterval(() => {
-      countdown--;
-      document.getElementById('countdown').textContent = countdown;
-      if (countdown <= 0) {
-        countdown = 30;
-        doRefresh();
-      }
-    }, 1000);
-
-    // ── Manual refresh button ─────────────────────────────────────────────────
-    document.getElementById('refresh-btn').addEventListener('click', () => {
-      countdown = 30;
-      doRefresh();
+    wrap.innerHTML = '';
+    items.forEach(({ t, iso }) => {
+      const d     = document.createElement('div');
+      d.className = 'dot' + (t === currentT ? ' active' : '');
+      d.title     = new Date(iso).toLocaleString();
+      d.dataset.t = t;
+      d.onclick   = () => selectShot(t);
+      wrap.appendChild(d);
     });
+  }
 
-    // ── Toggle available windows list ─────────────────────────────────────────
-    function toggleWindows() {
-      const el = document.getElementById('windows-list');
-      el.style.display = el.style.display === 'none' ? '' : 'none';
-    }
+  function syncDots() {
+    document.querySelectorAll('#timeline-dots .dot').forEach(d => {
+      d.classList.toggle('active', Number(d.dataset.t) === currentT);
+    });
+  }
 
-    // ── Initial load ──────────────────────────────────────────────────────────
+  // ── Screenshot load ────────────────────────────────────────────────
+  function loadShot(t) {
+    const url   = t ? api(`/screenshot?t=${t}`) : api(`/screenshot?_=${Date.now()}`);
+    const probe = new Image();
+    probe.onload = () => {
+      img.src                = probe.src;
+      img.style.display      = 'block';
+      document.getElementById('empty-state').style.display = 'none';
+    };
+    probe.onerror = () => { isOnline = false; };
+    probe.src = url;
+  }
+
+  function selectShot(t) {
+    currentT = t;
+    isLive   = false;
+    document.getElementById('btn-live').classList.remove('active');
+    document.getElementById('countdown').textContent = 'HISTORY MODE';
+    syncDots();
+    loadShot(t);
+    showBanner('history', `◈  HISTORY  ${fmtTs(t)}`);
+    // Timer keeps running so the timeline stays fresh while browsing history.
+    // updateCountdown() is a no-op when isLive is false, so display is unaffected.
+  }
+
+  function goLive(resetTimer = true) {
+    isLive   = true;
+    document.getElementById('btn-live').classList.add('active');
+    currentT = screenshots[0]?.t || null;
+    syncDots();
     doRefresh();
-  </script>
+    if (resetTimer) startTick();
+  }
 
+  // ── Navigate prev / next ───────────────────────────────────────────
+  function navigate(delta) {
+    if (!screenshots.length) return;
+    const idx  = screenshots.findIndex(s => s.t === currentT);
+    const next = (idx === -1 ? 0 : idx + delta);
+    if (next < 0 || next >= screenshots.length) return;
+    selectShot(screenshots[next].t);
+  }
+
+  // ── Auto-refresh tick ──────────────────────────────────────────────
+  async function doRefresh() {
+    await fetchStatus();
+    await fetchTimeline();
+    if (isLive) {
+      currentT = screenshots[0]?.t || null;
+      loadShot(null);
+      syncDots();
+    }
+  }
+
+  function startTick() {
+    clearInterval(tickId);
+    countdownN = 30;
+    updateCountdown();
+    tickId = setInterval(() => {
+      countdownN--;
+      updateCountdown();
+      if (countdownN <= 0) { countdownN = 30; doRefresh(); }
+    }, 1000);
+  }
+
+  function updateCountdown() {
+    if (isLive) document.getElementById('countdown').textContent = `REFRESH ${countdownN}s`;
+  }
+
+  // ── Events ─────────────────────────────────────────────────────────
+  document.getElementById('btn-refresh').addEventListener('click', () => goLive(false));
+
+  document.getElementById('btn-live').addEventListener('click', goLive);
+  document.getElementById('btn-prev').addEventListener('click', () => navigate(1));
+  document.getElementById('btn-next').addEventListener('click', () => navigate(-1));
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft')       navigate(1);
+    if (e.key === 'ArrowRight')      navigate(-1);
+    if (e.key === 'l' || e.key === 'L') goLive();
+  });
+
+  // ── Zoom & pan ─────────────────────────────────────────────────────
+  const vp         = document.getElementById('viewport');
+  const img        = document.getElementById('screenshot');
+  const zoomBadge  = document.getElementById('zoom-badge');
+  const zoomHint   = document.getElementById('zoom-hint');
+
+  let z = { scale: 1, dx: 0, dy: 0 };
+  let dragging = false, dragX = 0, dragY = 0;
+  let hintTimer = null;
+
+  function applyZoom() {
+    img.style.transform = `translate(${z.dx}px, ${z.dy}px) scale(${z.scale})`;
+    const pct = Math.round(z.scale * 100);
+    if (z.scale > 1.01) {
+      zoomBadge.textContent  = `${pct}%`;
+      zoomBadge.style.display = 'block';
+      vp.style.cursor = dragging ? 'grabbing' : 'grab';
+    } else {
+      zoomBadge.style.display = 'none';
+      vp.style.cursor = 'default';
+    }
+  }
+
+  function resetZoom() {
+    z = { scale: 1, dx: 0, dy: 0 };
+    applyZoom();
+  }
+
+  function showHint() {
+    zoomHint.classList.add('visible');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => zoomHint.classList.remove('visible'), 2000);
+  }
+
+  // Scroll to zoom, centered on cursor
+  vp.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (img.style.display === 'none') return;
+
+    const rect     = vp.getBoundingClientRect();
+    const cx       = e.clientX - rect.left;
+    const cy       = e.clientY - rect.top;
+    const factor   = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const newScale = Math.min(Math.max(z.scale * factor, 1), 12);
+
+    if (newScale === 1) { resetZoom(); return; }
+
+    z.dx    = cx - (cx - z.dx) * newScale / z.scale;
+    z.dy    = cy - (cy - z.dy) * newScale / z.scale;
+    z.scale = newScale;
+    applyZoom();
+    if (newScale > 1.05) showHint();
+  }, { passive: false });
+
+  // Drag to pan
+  vp.addEventListener('mousedown', (e) => {
+    if (z.scale <= 1 || e.button !== 0) return;
+    dragging = true;
+    dragX    = e.clientX;
+    dragY    = e.clientY;
+    vp.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    z.dx += e.clientX - dragX;
+    z.dy += e.clientY - dragY;
+    dragX = e.clientX;
+    dragY = e.clientY;
+    applyZoom();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    applyZoom();
+  });
+
+  // Double-click to reset
+  vp.addEventListener('dblclick', resetZoom);
+
+  // Touch pinch-to-zoom
+  let lastTouchDist = null;
+  vp.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      lastTouchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    }
+  }, { passive: true });
+
+  vp.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2 || lastTouchDist === null) return;
+    e.preventDefault();
+    const dist   = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    const factor   = dist / lastTouchDist;
+    const rect     = vp.getBoundingClientRect();
+    const cx       = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+    const cy       = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+    const newScale = Math.min(Math.max(z.scale * factor, 1), 12);
+    z.dx           = cx - (cx - z.dx) * newScale / z.scale;
+    z.dy           = cy - (cy - z.dy) * newScale / z.scale;
+    z.scale        = newScale;
+    lastTouchDist  = dist;
+    applyZoom();
+  }, { passive: false });
+
+  vp.addEventListener('touchend', () => { lastTouchDist = null; });
+
+  // ── SSE — instant update when a new screenshot is saved ────────────
+  (function connectSSE() {
+    const src = new EventSource(api('/events'));
+    src.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'screenshot' && isLive) {
+          fetchTimeline().then(() => {
+            currentT = screenshots[0]?.t || null;
+            loadShot(null);
+            syncDots();
+            countdownN = 30;
+            updateCountdown();
+          });
+          fetchStatus();
+        }
+      } catch(_) {}
+    };
+    // onerror is fine to ignore — EventSource auto-reconnects,
+    // and the 30s poll loop is the fallback.
+  })();
+
+  // ── Boot ───────────────────────────────────────────────────────────
+  doRefresh().then(() => {
+    if (isLive && screenshots.length) {
+      currentT = screenshots[0].t;
+      loadShot(null);
+      syncDots();
+    }
+    startTick();
+  });
+</script>
 </body>
 </html>

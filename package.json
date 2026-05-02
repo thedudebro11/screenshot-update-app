@@ -2,14 +2,18 @@
   "name": "screenshot-update-app",
   "version": "1.0.0",
   "description": "Lightweight window screenshot monitor with local web viewer",
+  "author": "ScreenMonitor",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --enable-logging",
+    "generate-icon": "node scripts/generate-icon.js",
+    "predist": "node scripts/generate-icon.js && node scripts/download-cloudflared.js",
     "dist": "electron-builder --win"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "electron-updater": "^6.8.3",
     "express": "^4.19.2"
   },
   "devDependencies": {
@@ -19,15 +23,43 @@
   "build": {
     "appId": "com.screenmonitor.app",
     "productName": "ScreenMonitor",
+    "asar": true,
+    "asarUnpack": [
+      "web/**"
+    ],
+    "icon": "build/icon.ico",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "thedudebro11",
+        "repo": "screenshot-update-app"
+      }
+    ],
     "win": {
       "target": "nsis"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "extraResources": [
+      {
+        "from": "bin/cloudflared.exe",
+        "to": "cloudflared.exe"
+      }
+    ],
     "files": [
       "**/*",
       "!node_modules/.bin",
       "!screenshots/**",
       "!logs/**",
-      "!.env"
+      "!.env",
+      "!scripts/**",
+      "!build/**",
+      "!bin/**"
     ]
   }
 }

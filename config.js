@@ -36,8 +36,17 @@ module.exports = {
   // Secret token required for all web viewer requests.
   authToken: process.env.AUTH_TOKEN || 'screenmonitor',
 
-  // Where to save the latest screenshot (only one file is kept).
-  screenshotPath: path.join(dataDir, 'screenshots', 'latest.png'),
+  // Directory where timestamped screenshots are saved.
+  screenshotDir: path.join(dataDir, 'screenshots'),
+
+  // Maximum number of screenshots to keep on disk (oldest are pruned).
+  historyLimit: parseInt(process.env.HISTORY_LIMIT) || 100,
+
+  // Discord webhook URL for failure / recovery alerts. Leave blank to disable.
+  discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || '',
+
+  // How many consecutive non-ok captures trigger a Discord alert.
+  discordAlertAfter: parseInt(process.env.DISCORD_ALERT_AFTER) || 3,
 
   // Log file location.
   logPath: path.join(dataDir, 'logs', 'app.log'),

@@ -39,8 +39,8 @@ async function captureWindow(targetTitle, fullscreenFallback = true) {
     // reasonable size so the screenshot is actually useful to look at.
     const windowSources = await desktopCapturer.getSources({
       types: ['window'],
-      thumbnailSize: { width: 1920, height: 1080 },
-      fetchWindowIcons: false, // not needed, saves a tiny bit of work
+      thumbnailSize: { width: 7680, height: 4320 }, // 8K cap = native res on any normal monitor
+      fetchWindowIcons: false,
     });
 
     // Partial, case-insensitive match on window title.
@@ -65,7 +65,7 @@ async function captureWindow(targetTitle, fullscreenFallback = true) {
       // ── Full-screen fallback ───────────────────────────────────────────────
       const screenSources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 },
+        thumbnailSize: { width: 7680, height: 4320 },
       });
 
       if (!screenSources.length) {

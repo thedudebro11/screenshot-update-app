@@ -7,3 +7,4 @@ dist/
 .claude/mind.mv2.lock
 .claude/mind.mv2.lock.lock
 .claude/mind.manifest.wal
+bin/
