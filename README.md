@@ -19,8 +19,12 @@ Captures a screenshot of a target window on a schedule and serves it on a privat
 ## Installation
 
 1. Download **ScreenMonitor Setup.exe** from the [Releases page](https://github.com/thedudebro11/screenshot-update-app/releases)
-2. Double-click it and follow the installer (takes about 30 seconds)
-3. ScreenMonitor starts immediately after installation
+2. Double-click it to run the installer
+
+   > **Windows may show a "Windows protected your PC" warning.** This happens because the app isn't from a large software company. Click **"More info"** then **"Run anyway"** to continue. The app is safe.
+
+3. Follow the installer (takes about 30 seconds)
+4. ScreenMonitor starts immediately after installation
 
 That's it. No Node.js, no terminal, no configuration required to get started.
 
@@ -28,7 +32,9 @@ That's it. No Node.js, no terminal, no configuration required to get started.
 
 ## First run
 
-After installation a **green icon** appears near your clock in the bottom-right corner of the taskbar.
+After installation a **green icon** appears in the system tray — the row of small icons near the clock in the bottom-right corner of the taskbar.
+
+> **Can't see it?** Windows hides extra tray icons behind a small **^** arrow at the left edge of the tray. Click that arrow to reveal hidden icons. To keep ScreenMonitor always visible, drag its icon out of the overflow area and drop it onto the taskbar.
 
 Within a few seconds you'll see two balloon notifications:
 
@@ -86,7 +92,12 @@ Copy it and send it to whoever needs to view the screen. It works on any device 
 
 ## Configuration
 
-To customize settings, create a file called `.env` inside your data folder.
+Most settings can be changed directly from the **tray menu** without touching any files:
+
+- **Target window** — Right-click the tray icon → **Set Target Window** → pick from the list of open windows
+- **Capture interval** — Open the web viewer and use the interval dropdown in the top-right corner
+
+For advanced settings, create a file called `.env` inside your data folder.
 
 **To open the data folder:** Right-click the tray icon → **Open Data Folder**
 
@@ -102,8 +113,8 @@ CAPTURE_INTERVAL_MINUTES=1
 # How many screenshots to keep before oldest are deleted (default: 100)
 HISTORY_LIMIT=100
 
-# Secret token for the web viewer (default: screenmonitor)
-AUTH_TOKEN=screenmonitor
+# Secret token for the web viewer (auto-generated on first run — find it in the tray menu)
+# AUTH_TOKEN=your_custom_token
 
 # Discord webhook URL for alerts (leave blank to disable)
 DISCORD_WEBHOOK_URL=
