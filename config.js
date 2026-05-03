@@ -39,7 +39,7 @@ if (!process.env.AUTH_TOKEN) {
 
 module.exports = {
   // Partial window title to match (case-insensitive).
-  targetWindowTitle: process.env.TARGET_WINDOW_TITLE || 'RustDesk',
+  targetWindowTitle: process.env.TARGET_WINDOW_TITLE ?? '',
 
   // Milliseconds between captures. Defaults to 1 minute.
   captureIntervalMs: (parseFloat(process.env.CAPTURE_INTERVAL_MINUTES) || 1) * 60 * 1000,

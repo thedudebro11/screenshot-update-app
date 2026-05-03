@@ -24,7 +24,7 @@ function listScreenshots(dir) {
     .reverse(); // newest first
 }
 
-function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalChange }) {
+function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalChange, onError }) {
   const app     = express();
   const clients = new Set(); // active SSE connections
 
@@ -145,8 +145,11 @@ function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalCha
   });
 
   // ── Start ──────────────────────────────────────────────────────────────────
-  app.listen(config.port, '0.0.0.0', () => {
+  const httpServer = app.listen(config.port, '0.0.0.0', () => {
     console.log(`[server] Web viewer: http://localhost:${config.port}/?token=${config.authToken}`);
+  });
+  httpServer.on('error', (err) => {
+    if (typeof onError === 'function') onError(err);
   });
 
   return {

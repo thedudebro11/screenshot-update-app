@@ -34,6 +34,22 @@ const { desktopCapturer } = require('electron');
  */
 async function captureWindow(targetTitle, fullscreenFallback = true) {
   try {
+    // Full-screen mode: when no target is configured, skip window matching
+    // entirely and capture the primary screen directly.  Returns isFallback:false
+    // so the status stays 'ok' and Discord alerts are not triggered.
+    if (!targetTitle) {
+      const [windowSources, screenSources] = await Promise.all([
+        desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 1, height: 1 }, fetchWindowIcons: false }),
+        desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 7680, height: 4320 } }),
+      ]);
+      const availableWindows = windowSources.map(s => s.name).filter(Boolean).join(' | ');
+      if (!screenSources.length) {
+        return { success: false, error: 'No screen sources found.', availableWindows };
+      }
+      const pngBuffer = screenSources[0].thumbnail.toPNG();
+      return { success: true, windowName: 'Full Screen', pngBuffer, isFallback: false, availableWindows };
+    }
+
     // Fetch thumbnails for all open windows.
     // thumbnailSize sets the resolution of each thumbnail — use the largest
     // reasonable size so the screenshot is actually useful to look at.

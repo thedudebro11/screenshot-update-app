@@ -1,6 +1,6 @@
 {
   "name": "screenshot-update-app",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Lightweight window screenshot monitor with local web viewer",
   "author": "ScreenMonitor",
   "main": "main.js",

@@ -12,7 +12,7 @@
  * system tray. Right-click the tray icon to capture now or quit.
  */
 
-const { app, Tray, Menu, nativeImage, shell, clipboard } = require('electron');
+const { app, Tray, Menu, nativeImage, shell, clipboard, dialog } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
 const crypto = require('crypto');
@@ -84,7 +84,7 @@ function updateTooltip() {
   if (!tray) return;
   const elapsed = relTimeTray(state.lastCaptureTime);
   const label   = { ok: 'OK', fallback: 'FALLBACK', error: 'ERROR', pending: 'PENDING' }[state.lastCaptureStatus] || 'PENDING';
-  tray.setToolTip(`ScreenMonitor — ${config.targetWindowTitle}\nLast: ${elapsed} (${label})`);
+  tray.setToolTip(`ScreenMonitor — ${config.targetWindowTitle || 'Full Screen'}\nLast: ${elapsed} (${label})`);
 }
 
 // ── Capture & save ─────────────────────────────────────────────────────────
@@ -96,13 +96,16 @@ async function doCapture() {
   isCapturing = true;
 
   try {
-    log(`Capturing "${config.targetWindowTitle}"...`);
+    log(`Capturing "${config.targetWindowTitle || 'Full Screen'}"...`);
 
     const result = await captureWindow(config.targetWindowTitle, true);
 
     // Keep window list fresh for the "Set Target Window" tray submenu.
     const rawList = (result.availableWindows || '').split(' | ').filter(Boolean);
-    if (rawList.length > 0) windowList = rawList;
+    if (rawList.length > 0 && rawList.join('|') !== windowList.join('|')) {
+      windowList = rawList;
+      tray.setContextMenu(buildMenu(state.tunnelUrl));
+    }
 
     if (result.success) {
       // ── Change detection ───────────────────────────────────────────────
@@ -290,14 +293,23 @@ function buildMenu(tunnelUrl = null) {
 
   // Submenu listing every open window — user clicks one to switch the target.
   // Populated from the last capture result; shows a placeholder on first start.
-  const windowItems = windowList.length > 0
-    ? windowList.map(name => ({
-        label:   name.length > 50 ? name.slice(0, 47) + '…' : name,
-        type:    'radio',
-        checked: name.toLowerCase().includes(config.targetWindowTitle.toLowerCase()),
-        click:   () => setTargetWindow(name),
-      }))
-    : [{ label: 'Capture once to populate list', enabled: false }];
+  const fullScreenItem = {
+    label:   'Full Screen (entire desktop)',
+    type:    'radio',
+    checked: !config.targetWindowTitle,
+    click:   () => setTargetWindow(''),
+  };
+  const windowItems = [
+    fullScreenItem,
+    ...(windowList.length > 0
+      ? windowList.map(name => ({
+          label:   name.length > 50 ? name.slice(0, 47) + '…' : name,
+          type:    'radio',
+          checked: !!config.targetWindowTitle && name.toLowerCase().includes(config.targetWindowTitle.toLowerCase()),
+          click:   () => setTargetWindow(name),
+        }))
+      : [{ label: 'Capture once to populate list', enabled: false }]),
+  ];
 
   const items = [
     { label: 'ScreenMonitor', enabled: false },
@@ -335,7 +347,7 @@ function buildMenu(tunnelUrl = null) {
 
   items.push(
     { type: 'separator' },
-    { label: `Watching: ${config.targetWindowTitle}`, enabled: false },
+    { label: `Watching: ${config.targetWindowTitle || 'Full Screen'}`, enabled: false },
     { label: 'Set Target Window', submenu: windowItems },
     { label: 'Capture Interval',  submenu: intervalItems },
     { type: 'separator' },
@@ -397,6 +409,16 @@ app.whenReady().then(() => {
     screenshotDir:     config.screenshotDir,
     targetWindowTitle: config.targetWindowTitle,
     onIntervalChange:  (minutes) => setCaptureInterval(minutes),
+    onError: (err) => {
+      log(`Server error: ${err.message}`);
+      if (err.code === 'EADDRINUSE') {
+        dialog.showErrorBox(
+          'ScreenMonitor — Already Running',
+          `Port ${config.port} is already in use.\n\nScreenMonitor is likely already running — check the system tray (bottom-right of the taskbar).`
+        );
+      }
+      app.quit();
+    },
   }));
 
   createTray();
