@@ -1,111 +1,120 @@
+<div align="center">
+
 # ScreenMonitor
 
-Captures a screenshot of a target window on a schedule and serves it on a private web page you can open from any device, anywhere — no setup required.
+**Remote PC monitoring that just works. No account. No port forwarding. No subscription.**
+
+[![Version](https://img.shields.io/badge/version-1.2.0-brightgreen?style=flat-square)](https://github.com/thedudebro11/screenshot-update-app/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue?style=flat-square&logo=windows)](https://github.com/thedudebro11/screenshot-update-app/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-lightgrey?style=flat-square)](LICENSE)
+
+[**Download for Windows →**](https://github.com/thedudebro11/screenshot-update-app/releases/latest)
+
+</div>
 
 ---
 
-## What it does
+> Drop a tiny installer on any Windows PC and instantly get a private, authenticated web page — accessible from your phone, another country, anywhere — showing a live screenshot feed of that machine. No router config. No VPN. No Tailscale. No cloud account.
 
-- Runs silently in the **system tray** (no window, no terminal)
-- Takes a screenshot of a specific app every minute (configurable)
-- Only saves a new screenshot **if the screen actually changed**
-- Serves those screenshots on a private web page with a timeline you can scrub through
-- Creates a **public remote URL automatically** using Cloudflare — no Tailscale, no port forwarding, no account needed
-- Sends **Discord alerts** if the target window goes missing or capture fails
-- Starts automatically when Windows boots
+---
+
+## How it works
+
+ScreenMonitor runs silently in the system tray. Every minute (configurable) it captures a screenshot, checks if anything actually changed, and if so saves it and instantly pushes it to any open browser tabs via a live connection. A built-in Cloudflare tunnel gives you a public URL the moment it starts — no setup on your end.
+
+```
+Windows PC  →  captures screenshot  →  detects change  →  saves to disk
+                                                         →  pushes to browser instantly
+                                                         →  serves via Cloudflare URL
+```
+
+**That's the whole thing.** One installer, one tray icon, one URL.
+
+---
+
+## Features
+
+- **Zero-config remote access** — Cloudflare Quick Tunnel generates a public HTTPS URL on every launch. Share it and you're done.
+- **Live push updates** — browser updates the instant a new screenshot is saved, no refresh needed
+- **Smart change detection** — skips saving if nothing on screen changed (SHA256 comparison), so you don't fill your disk with duplicates
+- **Full screenshot history** — timeline scrubber lets you step through every captured moment
+- **Zoom & pan** — scroll to zoom, drag to pan, pinch on touch devices, double-click to reset
+- **Discord alerts** — get pinged when the target window goes missing or capture fails, and again when it recovers
+- **Starts with Windows** — auto-launches on login so you never have to think about it
+- **Self-updating** — pulls new versions from GitHub Releases automatically
+- **Completely local** — screenshots never leave your machine (Cloudflare only proxies the connection, never stores data)
 
 ---
 
 ## Installation
 
-1. Download **ScreenMonitor Setup.exe** from the [Releases page](https://github.com/thedudebro11/screenshot-update-app/releases)
-2. Double-click it to run the installer
+1. Download **`ScreenMonitor Setup 1.2.0.exe`** from the [Releases page](https://github.com/thedudebro11/screenshot-update-app/releases/latest)
+2. Run it and follow the installer (about 30 seconds)
+3. Done — a green icon appears in your system tray
 
-   > **Windows may show a "Windows protected your PC" warning.** This happens because the app isn't from a large software company. Click **"More info"** then **"Run anyway"** to continue. The app is safe.
+> **Windows SmartScreen warning?** Click **"More info"** → **"Run anyway"**. This appears because the app isn't code-signed by a large corporation, not because anything is wrong.
 
-3. Follow the installer (takes about 30 seconds)
-4. ScreenMonitor starts immediately after installation
-
-That's it. No Node.js, no terminal, no configuration required to get started.
+No Node.js. No terminal. No configuration required.
 
 ---
 
-## First run
+## Your viewer URL
 
-After installation a **green icon** appears in the system tray — the row of small icons near the clock in the bottom-right corner of the taskbar.
+Within seconds of launching you'll see two notifications:
 
-> **Can't see it?** Windows hides extra tray icons behind a small **^** arrow at the left edge of the tray. Click that arrow to reveal hidden icons. To keep ScreenMonitor always visible, drag its icon out of the overflow area and drop it onto the taskbar.
+- **"ScreenMonitor is running"** — your local URL
+- **"Remote access ready"** — your public Cloudflare URL, works from any device anywhere
 
-Within a few seconds you'll see two balloon notifications:
-
-1. **"ScreenMonitor is running"** — shows your local viewer URL
-2. **"Remote access ready"** — shows your public Cloudflare URL that works from anywhere
-
-**Right-click the green icon** at any time for the menu:
-
-| Menu item | What it does |
-|---|---|
-| Capture Now | Takes a screenshot immediately |
-| Open Viewer (Local) | Opens the viewer in your browser on this PC |
-| Open Viewer (Remote) | Opens the public URL (works on any device) |
-| Copy Remote URL | Copies the full authenticated URL to your clipboard |
-| Open Data Folder | Opens the folder where screenshots and logs are stored |
-| Quit | Stops the app (it will restart on next login) |
-
----
-
-## Viewing screenshots
-
-Open the viewer URL in any browser. The page shows:
-
-- The latest screenshot, **updating automatically the moment a new one is captured**
-- A **timeline bar** at the bottom — each dot is one saved screenshot
-- Click any dot to view that moment in time
-- Use **← →** arrow keys to step through captures
-- Click **Live** or **Refresh** to return to the latest
-
-**Zooming in:**
-
-| Action | Result |
-|---|---|
-| Scroll wheel | Zoom in / out, centered on your cursor |
-| Click and drag | Pan around when zoomed in |
-| Double-click | Reset zoom back to fit |
-| Pinch (touch / trackpad) | Pinch to zoom |
-
----
-
-## Sharing remote access
-
-The **Remote URL** in the tray menu is a full public link that includes your secret token. It looks like:
+Right-click the tray icon at any time to copy or open either URL. The full authenticated link looks like:
 
 ```
 https://abc-def-ghi.trycloudflare.com/?token=yourtoken
 ```
 
-Copy it and send it to whoever needs to view the screen. It works on any device with a browser — phone, tablet, another PC.
+Send it to anyone who needs to view the screen. Works on phones, tablets, any browser.
 
-> **Note:** The remote URL is temporary and changes each time ScreenMonitor restarts.
-> For a permanent URL you'd need a Cloudflare account and a named tunnel (optional, not covered here).
+---
+
+## Tray menu
+
+Right-click the green tray icon to access everything:
+
+| Option | What it does |
+|--------|-------------|
+| Capture Now | Takes a screenshot immediately |
+| Open Viewer (Local) | Opens the viewer on this PC |
+| Open Viewer (Remote) | Opens the public URL |
+| Copy Remote URL | Copies the full authenticated URL |
+| Set Target Window | Pick which window to watch (or Full Screen) |
+| Capture Interval | Change how often screenshots are taken |
+| Open Data Folder | Opens where screenshots and logs are stored |
+| Quit | Stops the app |
+
+---
+
+## Web viewer
+
+| Action | Result |
+|--------|--------|
+| Scroll wheel | Zoom in / out centered on cursor |
+| Click + drag | Pan when zoomed in |
+| Double-click | Reset zoom to fit |
+| Pinch (touch/trackpad) | Pinch to zoom |
+| ← → arrow keys | Step through screenshot history |
+| Click timeline dot | Jump to that moment |
+| Live button | Return to latest and resume auto-update |
 
 ---
 
 ## Configuration
 
-Most settings can be changed directly from the **tray menu** without touching any files:
+Most settings are accessible from the tray menu with no file editing needed.
 
-- **Target window** — Right-click the tray icon → **Set Target Window** → pick from the list of open windows
-- **Capture interval** — Open the web viewer and use the interval dropdown in the top-right corner
+For advanced configuration, create a `.env` file inside your data folder (`%APPDATA%\ScreenMonitor\`). Open it via **tray → Open Data Folder**.
 
-For advanced settings, create a file called `.env` inside your data folder.
-
-**To open the data folder:** Right-click the tray icon → **Open Data Folder**
-
-Create a new text file there named `.env` (not `.env.txt`) and add any of these lines:
-
-```
-# Which window to watch (partial match, case-insensitive)
-TARGET_WINDOW_TITLE=RustDesk
+```env
+# Which window to watch — leave blank (default) to capture the full screen
+TARGET_WINDOW_TITLE=
 
 # How often to capture, in minutes (default: 1)
 CAPTURE_INTERVAL_MINUTES=1
@@ -113,79 +122,59 @@ CAPTURE_INTERVAL_MINUTES=1
 # How many screenshots to keep before oldest are deleted (default: 100)
 HISTORY_LIMIT=100
 
-# Secret token for the web viewer (auto-generated on first run — find it in the tray menu)
-# AUTH_TOKEN=your_custom_token
-
-# Discord webhook URL for alerts (leave blank to disable)
+# Discord webhook URL for failure/recovery alerts (leave blank to disable)
 DISCORD_WEBHOOK_URL=
 
-# Consecutive non-ok captures before a Discord alert fires (default: 3)
+# How many consecutive failures before a Discord alert fires (default: 3)
 DISCORD_ALERT_AFTER=3
 ```
 
-Restart ScreenMonitor after saving — right-click the tray icon → Quit, then relaunch from the Start menu.
+Restart ScreenMonitor after saving (tray → Quit, then relaunch from Start menu).
 
 ---
 
 ## Discord alerts
 
-ScreenMonitor can ping a Discord channel when something goes wrong.
+1. In Discord, go to the channel you want → Settings (⚙) → Integrations → Webhooks → New Webhook
+2. Copy the webhook URL
+3. Paste it into `.env` as `DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...`
+4. Restart ScreenMonitor
 
-1. In Discord, open the channel you want alerts in
-2. Click the gear (⚙) → **Integrations** → **Webhooks** → **New Webhook**
-3. Copy the webhook URL
-4. Paste it into your `.env` file:
-   ```
-   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR/WEBHOOK
-   ```
-5. Restart ScreenMonitor
-
-You'll receive:
-
-- **⚠️ Alert** when the target window hasn't been found for 3 captures in a row
-- **✅ Recovered** when capture returns to normal
+You'll get an **⚠️ alert** when capture fails 3 times in a row, and a **✅ recovery** ping when it comes back.
 
 ---
 
 ## Troubleshooting
 
-**The screenshot is black or blank**
+**Black or blank screenshot**
+Hardware-accelerated windows (games, GPU-heavy apps) bypass Windows screen capture — there's no workaround, it's an OS limitation. Minimized windows also produce blank captures. Keep the target window visible (it can be behind other windows, just not minimized to the taskbar).
 
-Some apps use hardware acceleration that blocks screen capture — this includes most games and some GPU-heavy software. There is no workaround; it's a Windows limitation. If the window is minimized it also produces a blank image. Keep the target window visible on screen (it can be behind other windows, just not minimized to the taskbar).
+**"Window not found" / falling back to full screen**
+ScreenMonitor couldn't find the window title you set. Open `logs\app.log` in your data folder and look for `Available windows:` — it lists every window the app can see, so you can find the exact title to use.
 
-**"Window not found" — showing full screen instead**
+**Viewer shows OFFLINE**
+The app isn't running or isn't reachable. Check the system tray for the green icon.
 
-ScreenMonitor fell back to a full-screen capture because it couldn't find your target window. Make sure the app is open and that `TARGET_WINDOW_TITLE` in your `.env` matches part of the window's title bar text. Not sure what the exact title is? Open the data folder → `logs\app.log` and look for lines that say `Available windows:` — they list every window the app can currently see.
-
-**The web viewer shows "OFFLINE"**
-
-The app isn't reachable. Check that the green icon is still in the system tray and that you're using the correct URL and token.
-
-**The remote URL stopped working**
-
-The Cloudflare URL changes every time ScreenMonitor restarts. Get the new one from the tray menu → **Copy Remote URL**.
-
-**I want to see what the app is doing**
-
-Open the data folder from the tray menu. The file `logs\app.log` has a timestamped entry for every capture, skipped frame (no change), and any error.
+**Remote URL stopped working**
+The Cloudflare URL is temporary and changes on every restart. Get the new one from the tray menu → Copy Remote URL. For a permanent URL you'd need a Cloudflare account with a named tunnel.
 
 ---
 
-## Data & privacy
+## Privacy & data
 
-All screenshots are stored locally on this PC in your data folder (`%APPDATA%\ScreenMonitor\screenshots\`). They are never sent to any external server. When you use the remote URL, screenshots pass through Cloudflare's network in transit — encrypted, the same as any HTTPS connection — but are not stored by Cloudflare.
+Screenshots are stored only on the local PC at `%APPDATA%\ScreenMonitor\screenshots\`. They are never uploaded to any server. When you use the remote URL, screenshots pass through Cloudflare's network encrypted (standard HTTPS) but are not stored by Cloudflare. The oldest screenshots are pruned automatically once `HISTORY_LIMIT` is reached.
 
-The oldest screenshots are deleted automatically once the folder reaches your `HISTORY_LIMIT`.
+---
+
+## Uninstalling
+
+**Settings → Apps → ScreenMonitor → Uninstall.**
+
+Your screenshots and `.env` in `%APPDATA%\ScreenMonitor\` are not removed automatically — delete that folder manually if you want a completely clean removal.
 
 ---
 
 ## License
 
 Free for personal use. See [LICENSE](LICENSE) for details.
-For commercial use, contact thedevguy0101@gmail.com.
-
----
-
-## Uninstalling
-
-Go to **Settings → Apps**, find **ScreenMonitor**, and click Uninstall. Your screenshots and `.env` file in `%APPDATA%\ScreenMonitor\` are not removed by the uninstaller — delete that folder manually if you want a completely clean removal.
+Commercial use: [thedevguy0101@gmail.com](mailto:thedevguy0101@gmail.com)
