@@ -51,7 +51,7 @@ module.exports = {
   authToken: process.env.AUTH_TOKEN || 'screenmonitor',
 
   // Directory where timestamped screenshots are saved.
-  screenshotDir: path.join(dataDir, 'screenshots'),
+  screenshotDir: process.env.SCREENSHOT_DIR || path.join(dataDir, 'screenshots'),
 
   // Maximum number of screenshots to keep on disk (oldest are pruned).
   historyLimit: parseInt(process.env.HISTORY_LIMIT, 10) || 100,

@@ -11,10 +11,14 @@
  *   - HTTP header:  X-Auth-Token: YOUR_TOKEN
  */
 
-const express = require('express');
-const fs      = require('fs');
-const path    = require('path');
-const config  = require('./config');
+const express                  = require('express');
+const fs                       = require('fs');
+const path                     = require('path');
+const { nativeImage }          = require('electron');
+const config                   = require('./config');
+
+// In-memory thumbnail cache — keyed by timestamp, capped at 300 entries.
+const thumbCache = new Map();
 
 function listScreenshots(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -24,7 +28,7 @@ function listScreenshots(dir) {
     .reverse(); // newest first
 }
 
-function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalChange, onError }) {
+function startServer({ getState, targetWindowTitle, onIntervalChange, onHistoryLimitChange, onError }) {
   const app     = express();
   const clients = new Set(); // active SSE connections
 
@@ -49,13 +53,13 @@ function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalCha
     if (req.query.t) {
       const ts = parseInt(req.query.t, 10);
       if (isNaN(ts)) return res.status(400).type('text').send('Invalid timestamp.');
-      filePath = path.join(screenshotDir, `${ts}.png`);
+      filePath = path.join(config.screenshotDir, `${ts}.png`);
     } else {
-      const files = listScreenshots(screenshotDir);
+      const files = listScreenshots(config.screenshotDir);
       if (!files.length) {
         return res.status(404).type('text').send('No screenshot captured yet. Check /status for details.');
       }
-      filePath = path.join(screenshotDir, files[0]);
+      filePath = path.join(config.screenshotDir, files[0]);
     }
 
     if (!fs.existsSync(filePath)) {
@@ -74,10 +78,43 @@ function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalCha
     res.sendFile(filePath);
   });
 
+  // ── GET /thumbnail ────────────────────────────────────────────────────────
+  // Returns a small PNG preview (~240px wide) of a historical screenshot.
+  // Cached in memory so scrolling through the filmstrip doesn't re-decode.
+  app.get('/thumbnail', (req, res) => {
+    const ts = parseInt(req.query.t, 10);
+    if (isNaN(ts)) return res.status(400).type('text').send('Invalid timestamp.');
+
+    if (thumbCache.has(ts)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Content-Type', 'image/png');
+      return res.send(thumbCache.get(ts));
+    }
+
+    const filePath = path.join(config.screenshotDir, `${ts}.png`);
+    if (!fs.existsSync(filePath)) return res.status(404).type('text').send('Not found.');
+
+    try {
+      const img = nativeImage.createFromPath(filePath);
+      if (img.isEmpty()) return res.status(404).type('text').send('Not found.');
+      const thumb  = img.resize({ width: 240, quality: 'good' });
+      const buffer = thumb.toPNG();
+
+      if (thumbCache.size >= 300) thumbCache.delete(thumbCache.keys().next().value);
+      thumbCache.set(ts, buffer);
+
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Content-Type', 'image/png');
+      res.send(buffer);
+    } catch (err) {
+      res.status(500).type('text').send('Thumbnail error.');
+    }
+  });
+
   // ── GET /screenshots ───────────────────────────────────────────────────────
   // Returns a JSON list of all available screenshot timestamps (newest first).
   app.get('/screenshots', (req, res) => {
-    const files = listScreenshots(screenshotDir);
+    const files = listScreenshots(config.screenshotDir);
     const items = files.map(f => {
       const t = parseInt(f, 10);
       return { t, iso: new Date(t).toISOString() };
@@ -88,11 +125,11 @@ function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalCha
   // ── GET /status ────────────────────────────────────────────────────────────
   app.get('/status', (req, res) => {
     const s     = getState();
-    const files = listScreenshots(screenshotDir);
+    const files = listScreenshots(config.screenshotDir);
 
     // Sum screenshot directory size for the disk usage warning in the viewer.
     const sizeKb = files.reduce((acc, f) => {
-      try { return acc + fs.statSync(path.join(screenshotDir, f)).size; } catch(_) { return acc; }
+      try { return acc + fs.statSync(path.join(config.screenshotDir, f)).size; } catch(_) { return acc; }
     }, 0) / 1024;
 
     res.json({
@@ -106,8 +143,19 @@ function startServer({ getState, screenshotDir, targetWindowTitle, onIntervalCha
       screenshotExists: files.length > 0,
       screenshotSizeKb:  Math.round(sizeKb),
       captureIntervalMs: s.captureIntervalMs || null,
+      historyLimit:      config.historyLimit,
       serverTime:        new Date().toISOString(),
     });
+  });
+
+  // ── GET /config/history-limit ─────────────────────────────────────────────
+  app.get('/config/history-limit', (req, res) => {
+    const limit = parseInt(req.query.limit, 10);
+    if (isNaN(limit) || limit < 10 || limit > 500) {
+      return res.status(400).json({ error: 'limit must be between 10 and 500' });
+    }
+    if (typeof onHistoryLimitChange === 'function') onHistoryLimitChange(limit);
+    res.json({ ok: true, limit });
   });
 
   // ── GET /config/interval ──────────────────────────────────────────────────

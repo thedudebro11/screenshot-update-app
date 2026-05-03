@@ -240,6 +240,60 @@ function setCaptureInterval(minutes) {
   tray.setContextMenu(buildMenu(state.tunnelUrl));
 }
 
+// ── Change history limit at runtime ───────────────────────────────────────
+function setHistoryLimit(limit) {
+  config.historyLimit = limit;
+  const envPath = path.join(config.dataDir, '.env');
+  try {
+    let content = '';
+    try { content = fs.readFileSync(envPath, 'utf8'); } catch(_) {}
+    if (/^HISTORY_LIMIT=.*$/m.test(content)) {
+      content = content.replace(/^HISTORY_LIMIT=.*$/m, `HISTORY_LIMIT=${limit}`);
+    } else {
+      content = content.trimEnd() + `\nHISTORY_LIMIT=${limit}\n`;
+    }
+    fs.writeFileSync(envPath, content);
+  } catch (err) {
+    log(`Could not update history limit: ${err.message}`);
+  }
+  log(`History limit changed to: ${limit}`);
+}
+
+// ── Change screenshot storage folder at runtime ────────────────────────────
+async function setScreenshotDir() {
+  const result = await dialog.showOpenDialog({
+    title:       'Select Screenshot Folder',
+    defaultPath: config.screenshotDir,
+    properties:  ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return;
+
+  const newDir = result.filePaths[0];
+  try { fs.mkdirSync(newDir, { recursive: true }); } catch (err) {
+    log(`Could not create screenshot folder: ${err.message}`);
+    return;
+  }
+
+  config.screenshotDir = newDir;
+
+  const envPath = path.join(config.dataDir, '.env');
+  try {
+    let content = '';
+    try { content = fs.readFileSync(envPath, 'utf8'); } catch(_) {}
+    if (/^SCREENSHOT_DIR=.*$/m.test(content)) {
+      content = content.replace(/^SCREENSHOT_DIR=.*$/m, `SCREENSHOT_DIR=${newDir}`);
+    } else {
+      content = content.trimEnd() + `\nSCREENSHOT_DIR=${newDir}\n`;
+    }
+    fs.writeFileSync(envPath, content);
+  } catch (err) {
+    log(`Could not update .env: ${err.message}`);
+  }
+
+  log(`Screenshot folder changed to: ${newDir}`);
+  tray.setContextMenu(buildMenu(state.tunnelUrl));
+}
+
 // ── PNG icon builder (no canvas, no extra packages) ────────────────────────
 function createSolidColorPNG(width, height, r, g, b) {
   const zlib = require('zlib');
@@ -351,7 +405,9 @@ function buildMenu(tunnelUrl = null) {
     { label: 'Set Target Window', submenu: windowItems },
     { label: 'Capture Interval',  submenu: intervalItems },
     { type: 'separator' },
-    { label: 'Open Data Folder', click: () => shell.openPath(config.dataDir) },
+    { label: 'Open Data Folder',       click: () => shell.openPath(config.dataDir) },
+    { label: 'Open Screenshot Folder', click: () => shell.openPath(config.screenshotDir) },
+    { label: 'Set Screenshot Folder…', click: () => setScreenshotDir() },
     { type: 'separator' }
   );
 
@@ -406,9 +462,9 @@ app.whenReady().then(() => {
 
   ({ notifyClients } = startServer({
     getState:          () => state,
-    screenshotDir:     config.screenshotDir,
     targetWindowTitle: config.targetWindowTitle,
-    onIntervalChange:  (minutes) => setCaptureInterval(minutes),
+    onIntervalChange:      (minutes) => setCaptureInterval(minutes),
+    onHistoryLimitChange:  (limit)   => setHistoryLimit(limit),
     onError: (err) => {
       log(`Server error: ${err.message}`);
       if (err.code === 'EADDRINUSE') {
