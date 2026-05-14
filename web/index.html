@@ -336,13 +336,25 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 3px;
-        padding: 10px 14px;
+        padding: 7px 12px;
         margin-right: 0;
         border-right: 1px solid var(--border);
         border-bottom: 1px solid var(--border);
         white-space: normal;
-        overflow: visible;
+        overflow: hidden;
       }
+
+      /* Truncate long target name to one line with ellipsis */
+      .meta-item:first-child { overflow: hidden; }
+      .meta-item:first-child .meta-value {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+      }
+
+      .meta-label { font-size: 9px; }
+      .meta-value  { font-size: 12px; }
 
       /* Right-column cells — no right border */
       .meta-item:nth-child(even) { border-right: none; }
@@ -359,7 +371,7 @@
       #meta-right {
         grid-column: 1 / -1;
         margin-left: 0;
-        padding: 8px 14px;
+        padding: 6px 12px;
         justify-content: space-between;
         border-top: none;
       }
@@ -461,8 +473,9 @@
     @media (max-width: 640px) {
       #timeline        { height: 96px; padding: 0 8px; gap: 6px; }
       #timeline-label  { display: none; }
-      .thumb-item img  { width: 90px; height: 56px; }
-      #btn-prev, #btn-next, #btn-live { padding: 4px 8px; }
+      .thumb-item img  { width: 80px; height: 50px; }
+      #btn-prev, #btn-next { padding: 0; min-height: 40px; width: 100%; font-size: 20px; }
+      #btn-live        { min-height: 32px; padding: 0; width: 100%; }
     }
 
     /* ── STORAGE BAR ────────────────────────────────────────────────── */
@@ -544,11 +557,49 @@
     #limit-saved.visible { opacity: 1; }
 
     @media (max-width: 640px) {
-      #timeline-label { min-width: 80px; font-size: 9px; }
-      #storage-bar    { flex-wrap: wrap; height: auto; padding: 8px 14px; gap: 8px; }
-      #limit-slider   { max-width: none; order: 3; width: 100%; flex-basis: 100%; }
-      #limit-display  { min-width: auto; }
-      #limit-saved    { order: 4; }
+      #storage-bar       { flex-wrap: wrap; height: auto; padding: 7px 14px; gap: 8px; }
+      #btn-limit-dec,
+      #btn-limit-inc     { min-height: 40px; padding: 0 14px; font-size: 16px; }
+      #limit-slider      { max-width: none; order: 3; width: 100%; flex-basis: 100%; }
+      #limit-display     { min-width: auto; font-size: 12px; }
+      #limit-saved       { order: 4; }
+    }
+
+    /* ── HEADER + GLOBAL — MOBILE ──────────────────────────────────── */
+    @media (max-width: 640px) {
+      body { font-size: 13px; }
+
+      #header {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 0 16px;
+        gap: 0;
+      }
+
+      #logo { padding: 9px 0; }
+      .hdiv { display: none; }
+
+      #status-pill {
+        margin-left: auto;
+        padding: 4px 10px;
+        font-size: 11px;
+      }
+
+      #header-right {
+        width: 100%;
+        margin-left: 0;
+        padding: 8px 0 10px;
+        border-top: 1px solid var(--border);
+        gap: 8px;
+      }
+
+      #header-right button,
+      #interval-select {
+        flex: 1;
+        min-height: 44px;
+        font-size: 12px;
+        padding: 0 10px;
+      }
     }
 
     /* ── HELP BAR ───────────────────────────────────────────────────── */
@@ -583,6 +634,10 @@
     }
 
     #help-bar.active #help-bar-text { color: var(--text); }
+
+    @media (max-width: 640px) {
+      #help-bar { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -621,7 +676,7 @@
   </div>
   <img id="screenshot" alt="screenshot" data-help="Scroll to zoom in · Click and drag to pan around · Double-click to reset zoom back to normal">
   <div id="zoom-badge">100%</div>
-  <div id="zoom-hint">scroll to zoom · drag to pan · double-click to reset</div>
+  <div id="zoom-hint">pinch to zoom · drag to pan · double-tap to reset</div>
 </div>
 
 <!-- META BAR -->
